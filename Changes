@@ -1,6 +1,6 @@
-Revision history for Perl extension genomeID.
+Revision history for Perl extension Achri::GenomeID.
 
-0.01  Wed Sep 10 14:29:06 2014
+0.01  Thu Sep 11 09:04:16 2014
 	- original version; created by h2xs 1.23 with options
-		-Xan genomeID
+		-XAn Achri::GenomeID --compat-version=5.6.0
 

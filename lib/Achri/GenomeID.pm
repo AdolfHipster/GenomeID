@@ -1,11 +1,10 @@
-package genomeID;
+package Achri::GenomeID;
 
-use 5.010001;
+use 5.006000;
 use strict;
 use warnings;
 
 require Exporter;
-use AutoLoader qw(AUTOLOAD);
 
 our @ISA = qw(Exporter);
 
@@ -13,7 +12,7 @@ our @ISA = qw(Exporter);
 # names by default without a very good reason. Use EXPORT_OK instead.
 # Do not simply export all your public functions/methods/constants.
 
-# This allows declaration	use genomeID ':all';
+# This allows declaration	use Achri::GenomeID ':all';
 # If you do not need this, moving things directly into @EXPORT or @EXPORT_OK
 # will save memory.
 our %EXPORT_TAGS = ( 'all' => [ qw(
@@ -31,24 +30,22 @@ our $VERSION = '0.01';
 
 # Preloaded methods go here.
 
-# Autoload methods go after =cut, and are processed by the autosplit program.
-
 1;
 __END__
 # Below is stub documentation for your module. You'd better edit it!
 
 =head1 NAME
 
-genomeID - Perl extension for blah blah blah
+Achri::GenomeID - Perl extension for blah blah blah
 
 =head1 SYNOPSIS
 
-  use genomeID;
+  use Achri::GenomeID;
   blah blah blah
 
 =head1 DESCRIPTION
 
-Stub documentation for genomeID, created by h2xs. It looks like the
+Stub documentation for Achri::GenomeID, created by h2xs. It looks like the
 author of the extension was negligent enough to leave the stub
 unedited.
 
