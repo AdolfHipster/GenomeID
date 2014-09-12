@@ -71,12 +71,10 @@ my %autoSomes = ('1' => [[45973928,'A','G'],
 		);
 
 # declare strings making the ID
-my $MADIB = "";
-my $AMB = "";
-my $SMB = "";
+my $MADIB = ""; my $AMB = ""; my $SMB = "";
 
 # declare some useful global vars
-my $file; my $bam; my $baq; my $noise; my $sex;
+my $file; my $type; my $baq; my $noise; my $sex;
 
 sub generate_id{
 	# requires input as hash
@@ -84,11 +82,12 @@ sub generate_id{
 	
 	# store input flags
 	$baq = $input{'baq'}; $noise = $input{'noise'};
-	$sex = $input{'sex'}; 
+	$sex = $input{'sex'}; $file = $input{'file'}; 
 	
 	# determine if BAM or VCF
-	if (exists $input{'bam'}){
-		$bam=1; $file = $input{'bam'};
+	if ($input{'type'} eq 'bam'){
+		# open file using sam tools
+		$file = Bio::DB::Sam->new(-bam =>$file);		
 	
 		# generate MADIB and AMB
 		genMADIB_AMB();
@@ -96,12 +95,14 @@ sub generate_id{
 		# generate sex and version block  markerBits
 		genSMB((exists $input{'ucn'})? 1:0);
 	}
-	elsif(exists $input{'vcf'}){
-		$bam=0; $file = $input{'vcf'};
+	elsif($input{'type'} eq 'vcf'){
+		print "vcf detected\n";
 	}
 	else{
-		die "No BAM or VCF file was specified\n";
+		die "No supported file type was specified\n";
 	}
+	
+	# print base 64 code
 	my $base64 = encode_base64 pack 'B*', "$MADIB$AMB$SMB";
 	print "$base64\n";
 	print "$MADIB$AMB$SMB\n";
@@ -117,8 +118,6 @@ sub genSMB{
 }
 
 sub genMADIB_AMB{
-	# open file using sam tools
-	$file = Bio::DB::Sam->new(-bam =>$file);
 	my $missing_markers = 0; my $only_peng = 1;my $bit=0; my $bit_mis =0;
 
 	# loop through autoSomal markers
@@ -234,23 +233,27 @@ sub zygosity{
 
 
 
-
+#	Ev+vv9f/d92B
+#	000100101111111110101111101111111101011111111111011101111101110110000001
 
 
 
 package main;
 
-my $bamFile = "/export/home/yusuf/geneomeID/HG00157.mapped.ILLUMINA.bwa.GBR.exome.20120522.bam";
-my %test_inputs = ('bam'=>$bamFile,'sex'=>0,'baq'=>30,'noise'=>0.05);
+my $filed = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf";
+my %test_inputs = ('type'=>'vcf','file'=>$filed,'sex'=>0,'baq'=>30,'noise'=>0.05);
 
-genomeID::generate_id(%test_inputs);
-
-
+#genomeID::generate_id(%test_inputs);
 
 
 
 
+my $loc = "1".":"."45973928-45973928";
+print "$loc\n";
 
+my $j = `vcf-query $filed $loc`;
+
+print "$j\n";
 
 
 
