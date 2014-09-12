@@ -11,62 +11,62 @@ my $VERSION = 1;
 
 # declare marker locations
 my %autoSomes = ('1' => [[45973928,'A','G'],
-			 [67861520,'A','C'],
+			 [67861520,'A','C',1],
 			 [158582646,'C','T'],
-			 [179520506,'A','G'],
+			 [179520506,'A','G',1],
 			 [209968684,'A','C'],
 			 [228431095,'C','T']],
 		 '2' => [[49381585,'A','G'],
 			 [75115108,'A','G'],
-			 [169789016,'A','G'],
+			 [169789016,'A','G',1],
 			 [215820013,'A','G'],
-			 [227896976,'C','T']],
-		 '3' => [[4403767,'C','T'],
+			 [227896976,'C','T',1]],
+		 '3' => [[4403767,'C','T',1],
 			 [45989044,'G','T'],
 			 [148727133,'A','G']],
-		 '4' => [[5749904,'A','G'],
+		 '4' => [[5749904,'A','G',1],
 			 [86915848,'C','T']],
 		 '5' => [[13719022,'A','C'],
 			 [40981689,'A','C'],
 		 	 [55155402,'C','T'],
-			 [82834630,'A','G'],
+			 [82834630,'A','G',1],
 			 [138456815,'A','G'],
 			 [171849471,'A','G']],
 		 '6' => [[56471402,'A','G'],
-			 [146755140,'A','G']],
+			 [146755140,'A','G',1]],
 		 '7' => [[34009946,'C','T'],
-			 [48450157,'C','T'],
+			 [48450157,'C','T',1],
 			 [100804140,'C','T'],
 			 [151254175,'C','T']],
-		 '8' => [[94935937,'C','T']],
+		 '8' => [[94935937,'C','T',1]],
 		 '9' => [[27202870,'C','T'],
 			 [77415284,'A','C'],
-			 [100190780,'C','T']],
+			 [100190780,'C','T',1]],
 		 '10'=> [[69926097,'A','G'],
-			 [100219314,'A','G']],
+			 [100219314,'A','G',1]],
 		 '11'=> [[6629665,'C','T'],
-			 [16133413,'A','G'],
+			 [16133413,'A','G',1],
 			 [30255185,'C','T']],
-		 '12'=> [[993930,'C','T'],
+		 '12'=> [[993930,'C','T',1],
 			 [52200742,'A','C']],
 		 '13'=> [[25466955,'C','T'],
-			 [39433606,'A','G']],
-		 '14'=> [[50769717,'A','G'],
+			 [39433606,'A','G',1]],
+		 '14'=> [[50769717,'A','G',1],
 			 [76045858,'A','G']],
-		 '16'=> [[70303580,'C','T']],
+		 '16'=> [[70303580,'C','T',1]],
 		 '17'=> [[7192091,'C','T'],
 			 [42449789,'C','T'],
-			 [71197748,'A','G']],
-		 '18'=> [[21413869,'C','T']],
-		 '19'=> [[10267077,'A','G'],
+			 [71197748,'A','G',1]],
+		 '18'=> [[21413869,'C','T',1]],
+		 '19'=> [[10267077,'A','G',1],
 			 [33353464,'A','G'],
 			 [55441902,'C','T']],
-		 '20'=> [[6100088,'C','T'],
+		 '20'=> [[6100088,'C','T',1],
 			 [19970705,'A','G'],
 			 [35865054,'C','T'],
 			 [52786219,'A','G']],
-		 '21'=> [[44323590,'G','T']],
-		 '22'=> [[21141300,'C','T'],
+		 '21'=> [[44323590,'G','T',1]],
+		 '22'=> [[21141300,'C','T',1],
 			 [37469591,'A','G']]
 		);
 
@@ -119,23 +119,50 @@ sub genSMB{
 sub genMADIB_AMB{
 	# open file using sam tools
 	$file = Bio::DB::Sam->new(-bam =>$file);
+	my $missing_markers = 0; my $only_peng = 1;	
 	
 	# loop through autoSomal markers
 	foreach my $chr (keys %autoSomes){
 		
+		# loop through each marker per chromosome
 		foreach (@{$autoSomes{$chr}}){
-			# grabbing data from this ugly data structure
-		 	my $pos = @{$_}[0]; my $f = ${$_}[1];
+			# grabbing data from the ugly autosomal structure
+		 	my $pos = @{$_}[0]; my $f = ${$_}[1]; 
 			my $s = ${$_}[2];
 			
 			# get zygosity
 			my $zyg = zygosity('chr'=>$chr,'loc'=>$pos,'al1'=>$f,'al2'=>$s);
 			
-			#append to MADIB and AMB	
-			$MADIB = "$MADIB" . ( ($zyg==-1)? "0" : "1" );				
-			$AMB = "$AMB" . (($zyg == -1)? "0" : $zyg);
+			# if no reads
+			if($zyg == -1){
+				# append to MADIB and AMB
+				$MADIB = "$MADIB" . "1";
+				$AMB = "$AMB" . "0";
+				$missing_markers++;
+				
+				# determine if its pengelly unkown
+				if(exists ${$_}[3]){
+					$only_peng =0;
+				}
+			}else{
+				# append as usual
+				$MADIB = "$MADIB" . "0";
+				$AMB = "$AMB$zyg";
+				
+				# determine if only pengelly
+				if(!exists ${$_}[3]){
+					$only_peng = 0;
+				}
+			}	
 		}
 	}
+
+	# if missing markers is less than 4, sprintf in binary, otherwise its 111 
+	my $binary_misMark = ($missing_markers <= 4)? (sprintf("%b",$missing_markers )) : "111";
+	
+	# fill the last 6 binary bits 
+	$MADIB = "$MADIB$only_peng" . $binary_misMark .
+		( ($missing_markers > 4)? "1" : "0" );
 }
 
 sub zygosity{
