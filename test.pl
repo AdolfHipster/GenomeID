@@ -94,9 +94,7 @@ sub generate_id{
 		genMADIB_AMB();
 		
 		# generate sex and version block  markerBits
-		if($sex){
-			genSMB((exists $input{'ucn'})? 1:0);
-		}			
+		genSMB((exists $input{'ucn'})? 1:0);
 	}
 	elsif(exists $input{'vcf'}){
 		$bam=0; $file = $input{'vcf'};
@@ -106,7 +104,7 @@ sub generate_id{
 	}
 	my $base64 = encode_base64 pack 'B*', "$MADIB$AMB$SMB";
 	print "$base64\n";
-	print "$MADIB $AMB $SMB\n";
+	print "$MADIB$AMB$SMB\n";
 }
 
 sub genSMB{
@@ -121,8 +119,8 @@ sub genSMB{
 sub genMADIB_AMB{
 	# open file using sam tools
 	$file = Bio::DB::Sam->new(-bam =>$file);
-	my $missing_markers = 0; my $only_peng = 1;	
-	
+	my $missing_markers = 0; my $only_peng = 1;my $bit=0; my $bit_mis =0;
+
 	# loop through autoSomal markers
 	foreach my $chr (keys %autoSomes){
 		
@@ -130,17 +128,18 @@ sub genMADIB_AMB{
 		foreach (@{$autoSomes{$chr}}){
 			# grabbing data from the ugly autosomal structure
 		 	my $pos = @{$_}[0]; my $f = ${$_}[1]; 
-			my $s = ${$_}[2];
+			my $s = ${$_}[2]; $bit++;
 			
 			# get zygosity
 			my $zyg = zygosity('chr'=>$chr,'loc'=>$pos,'al1'=>$f,'al2'=>$s);
 			
 			# if no reads
 			if($zyg == -1){
-				# append to MADIB and AMB
+				# append to and AMB
 				$AMB = "$AMB" . "0";
 				$missing_markers++;
-				
+				$bit_mis = $bit;				
+
 				# determine if its pengelly unkown
 				if(exists ${$_}[3]){
 					$only_peng =0;
@@ -153,16 +152,31 @@ sub genMADIB_AMB{
 				if(!exists ${$_}[3]){
 					$only_peng = 0;
 				}
-			}	
+			}
 		}
 	}
-
-	# if missing markers is less than 4, sprintf in binary, otherwise its 111 
-	my $binary_misMark = ($missing_markers <= 4)? (sprintf("%b",$missing_markers )) : "111";
 	
-	# fill the last 6 binary bits 
-	$MADIB = "$MADIB$only_peng" . $binary_misMark .
-		( ($missing_markers > 4)? "1" : "0" );
+	# if no missing markers, MADIB = 0
+	if($missing_markers == 0){
+		$MADIB = "000000";
+	}
+	# if greater than 4, set to 63
+	elsif($missing_markers > 4){
+		$MADIB = sprintf("%b",63);
+	}
+	# only Pengelly, set to 59
+	elsif($only_peng){
+		$MADIB = sprintf("%b",59);
+	}
+	# only one missing marker
+	elsif($missing_markers == 1){
+		$MADIB = "0" x (6-length(sprintf("%b",$bit_mis))) . sprintf("%b",$bit_mis);
+	}
+	# else just show the number of missing markers
+	else{
+		$MADIB = "0" x (6-length(sprintf("%b",$missing_markers))) . sprintf("%b",$missing_markers);
+	}
+	
 }
 
 sub zygosity{
