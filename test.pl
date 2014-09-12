@@ -5,7 +5,7 @@ use Bio::DB::Sam;
 use MIME::Base64;
 
 package genomeID;
-use MIME::Base64;
+use MIME::Base64; 
 
 my $VERSION = 1;
 
@@ -102,9 +102,9 @@ sub generate_id{
 	else{
 		die "No BAM or VCF file was specified\n";
 	}
-	#my $j = encode_base64('10');
-	#print "$j";
-	print "$MADIB $AMB $SMB\n";
+	my $base64 = encode_base64 pack 'B*', "$MADIB$AMB$SMB";
+	print "$base64\n";
+	print "$MADIB$AMB$SMB\n";
 }
 
 sub genSMB{
