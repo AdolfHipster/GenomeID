@@ -94,7 +94,9 @@ sub generate_id{
 		genMADIB_AMB();
 		
 		# generate sex and version block  markerBits
-		genSMB((exists $input{'ucn'})? 1:0);			
+		if($sex){
+			genSMB((exists $input{'ucn'})? 1:0);
+		}			
 	}
 	elsif(exists $input{'vcf'}){
 		$bam=0; $file = $input{'vcf'};
@@ -104,7 +106,7 @@ sub generate_id{
 	}
 	my $base64 = encode_base64 pack 'B*', "$MADIB$AMB$SMB";
 	print "$base64\n";
-	print "$MADIB$AMB$SMB\n";
+	print "$MADIB $AMB $SMB\n";
 }
 
 sub genSMB{
@@ -136,7 +138,6 @@ sub genMADIB_AMB{
 			# if no reads
 			if($zyg == -1){
 				# append to MADIB and AMB
-				$MADIB = "$MADIB" . "1";
 				$AMB = "$AMB" . "0";
 				$missing_markers++;
 				
@@ -146,7 +147,6 @@ sub genMADIB_AMB{
 				}
 			}else{
 				# append as usual
-				$MADIB = "$MADIB" . "0";
 				$AMB = "$AMB$zyg";
 				
 				# determine if only pengelly
