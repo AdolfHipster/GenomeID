@@ -44,11 +44,11 @@ my %pengelly = ( 'hg19' => ['1:45973928'=> 0, '1:67861520'=> 1, '1:158582646'=> 
 
 # declare marker locations 
 my %autoSomes = ('hg19' => ['1:45973928'=> 'A:G', '1:67861520'=> 'A:C', '1:158582646'=> 'C:T', '1:179520506'=> 'A:G',
-					'1:209968684'=> 'A:C', '1:228431095'=> 'C:T', '2:75115108'=> 'A:G', '2:169789016'=> 'A:G',
+					'1:209968684'=> 'A:C', '1:228431095'=> 'C:T', '2:75115108'=> 'A:G', '2:169789016'=> 'C:T',
 					'2:215820013'=> 'A:G', '2:227896976'=> 'C:T', '2:49381585'=> 'A:G', '3:4403767'=> 'C:T',
-					'3:45989044'=> 'G:T', '3:148727133'=> 'A:G', '4:5749904'=> 'A:G', '4:86915848'=> 'C:T',
-					'5:13719022'=> 'A:C', '5:40981689'=> 'A:C', '5:55155402'=> 'C:T', '5:82834630'=> 'A:G',
-					'5:138456815'=> 'A:G', '5:171849471'=> 'A:G', '7:34009946'=> 'C:T', '7:48450157'=> 'C:T',
+					'3:45989044'=> 'G:T', '3:148727133'=> 'A:G', '4:5749904'=> 'T:C', '4:86915848'=> 'C:T',
+					'5:13719022'=> 'A:C', '5:40981689'=> 'A:C', '5:55155402'=> 'C:T', '5:82834630'=> 'C:T',
+					'5:138456815'=> 'C:T', '5:171849471'=> 'A:G', '7:34009946'=> 'C:T', '7:48450157'=> 'C:T',
 					'7:100804140'=> 'C:T', '7:151254175'=> 'C:T', '8:94935937'=> 'C:T', '9:27202870'=> 'C:T',
 					'9:77415284'=> 'A:C', '9:100190780'=> 'C:T', '10:69926097'=> 'A:G', '10:100219314'=> 'A:G',
 					'11:6629665'=> 'C:T', '11:16133413'=> 'A:G', '11:30255185'=> 'C:T', '12:993930'=> 'C:T',
@@ -101,29 +101,31 @@ sub generate_id{
 	}
 	
 	# print base 64 code
-	return encode_base64 pack 'B*', "$MADIB$AMB$SMB";
+	#return encode_base64 pack 'B*', "$MADIB$AMB$SMB";
+	return "$MADIB$AMB$SMB\n";
 }
 
 sub bam_AMB{
 	my (%input) = @_;
 	my $missing_markers = 0; my $only_peng = 1; my $bit_mis =0;
-	
+	my @amb = ("0") x 58;	
+
 	# loop through autoSomal markers
-	foreach my $key (keys %autoSomes){
+	foreach my $key (keys %autoSomes){  
 		# grab marker location to query bam file
 		my ($chr,$pos) = split(":",$key);
 		my ($fir,$las) = split(":",$autoSomes{$key});
-		my $isPengelly = $pengelly{$key};
-
+		my $isPengelly = $pengelly{$key};		
+		
 		# get zygosity
 		my $zyg = bam_zygosity('chr'=>$chr,'loc'=>$pos,'al1'=>$fir,'al2'=>$las);
 		
 		# if no reads
 		if($zyg == -1){
 			# append to AMB
-			$AMB = "$AMB" . "0"; 
+			$amb[$bit_loc{$key}-1] = "0"; 
 			$missing_markers++;
-			$bis_mis = $bit_loc{$key};
+			$bit_mis = $bit_loc{$key}-1;
 
 			# if this is a missing pengelly, 
 			# then not only pengelly's are read
@@ -131,30 +133,32 @@ sub bam_AMB{
 		}
 		else{
 			# otherwise, append as usual
-			$AMB = "$AMB$zyg";
+			$amb[$bit_loc{$key}-1] = $zyg;
 
 			# if this is a read non pengelly,
 			# then not only pengelly's are read
 			if(!$isPengelly){$only_peng = 0;}
-		}
+		} 
 	}
+	$AMB = join("",@amb); 
 	genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng,'bMis'=>$bit_mis);
 }
 
 sub vcf_AMB{
-	my $chr = qr/^\d{0,}[XY]?\t\d+/s;
-	my $homo = qr/^(1[\/|]1)[^\/]/;
+	my $homo1 = qr/^(1[\/|]1)[^\/]/;
+	my $homo2 = qr/^(0[\/|]0)[^\/]/;
 	my $misR = qr/^(\.[\/|]\.)/;
 
 	# define useful constants
 	my $missing_markers = 0;
 	my $only_peng  = 1; my $bit_mis = 0;
-	my @amb = ("0") x 58;
+	my @amb = ("0") x 58; 
+	my $found = 0; my $found_peng = 0;
 	
 	open my $vcf, '<', $file or die "$!\n";
 	while(<$vcf>){
 		# make sure its a chromosome
-		next unless $_ =~ $chr;
+		next if /^#/;
 		
 		# get required information
 		my @fields = split(/\t/,$_);
@@ -165,13 +169,14 @@ sub vcf_AMB{
 		# determine if this is marker
 		next unless exists $pengelly{$key};
 		
-		my $zyg = ($fields[9] =~ $homo)? "0" : "1";
-		my $mis = ($fields[9] =~ $misR)? "1":"0";
+		my $zyg = ($fields[9] =~ $homo1 or $fields[9] =~ $homo2)? 0:1;
+		my $mis = ($fields[9] =~ $misR)? 1:0;
 		my $bit = $bit_loc{$key};
 		
 		#fill in the correct amb bit
 		$amb[$bit-1] = $zyg * (!$mis);
-		my $isPengelly = $pengelly{$key};		
+		my $isPengelly = $pengelly{$key};
+		$found_peng += $isPengelly;	
 		
 		# determine if missed read
 		if($mis){
@@ -179,13 +184,19 @@ sub vcf_AMB{
 			$bit_mis = $bit;
 
 			if($isPengelly){
-				$only_peng = 0;
+				$only_peng = 0; 
 			}
 		}elsif(!$isPengelly){
 			$only_peng = 0;
 		}
+		$found += (!$mis);
 	}
 	$AMB = join("",@amb);
+	
+	# deal with missing markers
+	$missing_markers += 58 - $found;
+	$only_peng = ($only_peng && $found_peng == 24);
+	
 	genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng,'bMis'=>$bit_mis);	
 }
 
@@ -221,7 +232,10 @@ sub bam_zygosity{
 	my @pairs = $file->get_features_by_location(-type=>'read_pair',-seq_id=>$input{'chr'},
 						-start=>$input{'loc'},-end=>$input{'loc'});
 	# counters
-	my $al1=0; my $al2 = 0; my $reads = 0;
+	my $reads = 0;
+	
+	my %alleles = ('G' => 0, 'C'=> 0, 'T'=> 0, 'A' => 0);
+
 	# loop through pairs
 	for my $pair(@pairs){
 		my ($f,$s) = $pair->get_SeqFeatures;
@@ -233,29 +247,29 @@ sub bam_zygosity{
 		
 		# increment the allele counters
 		my $bp = substr($f->query->dna,$start,1);
-		if($bp eq $input{'al1'}){
-			$al1++;
-		}
-		elsif($bp eq $input{'al2'}){
-			$al2++;
-		}
-			
+		$alleles{$bp}++;
+		
 		$reads++; #increment reads, accounts for noise
 	}
-	
+	# determine the majority alleles
+	# and compare to see if homo or hetero
+	my $al_1 = (sort {$alleles{$a} <=> $alleles{$b}} keys %alleles)[(keys %alleles)-1];
+	my $al_2 = (sort {$alleles{$a} <=> $alleles{$b}} keys %alleles)[(keys %alleles)-2];
+	my $al1 = $alleles{$al_1};
+	my $al2 = $alleles{$al_2};
+
 	# ensure there were reads
 	if ( $al1 ==0 && $al2 == 0  ){
 		return -1;
 	}
 	
 	# ensure that it was greater than noise
-	my $zyg_prob =($al1,$al2)[$al2>$al1]/($al1 +$al2)*100;
+	my $zyg_prob = $al1/($al1 +$al2)*100;
 	if($zyg_prob**$reads < $noise){
 		return 0;
 	}		
-	
-	# return zygosity, must be within 5% to be homo	
-	return (abs ($al1-$al2)/($al1 + $al2) > 0.10)? 1:0;
+
+	return ( $al1  >= 0.90 * $reads )? 0:1;	
 }
 
 sub genSMB{
