@@ -9,7 +9,7 @@ use MIME::Base64;
 use Data::Dumper;
 my $VERSION = 1;
 
-# declar pengelly marker locations
+# define marker relative bit locations
 my %bit_loc = ( 'hg19' => ['1:45973928'=> 1, '1:67861520'=> 2, '1:158582646'=> 3, '1:179520506'=> 4,
 					'1:209968684'=> 5, '1:228431095'=> 6, '2:75115108'=> 7, '2:169789016'=> 8,
 					'2:215820013'=> 9, '2:227896976'=> 10, '2:49381585'=> 11, '3:4403767'=> 12,
@@ -24,8 +24,14 @@ my %bit_loc = ( 'hg19' => ['1:45973928'=> 1, '1:67861520'=> 2, '1:158582646'=> 3
 					'17:71197748'=> 45, '18:21413869'=> 46, '19:10267077'=> 47, '19:33353464'=> 48,
 					'19:55441902'=> 49, '20:6100088'=> 50, '20:19970705'=> 51, '20:35865054'=> 52,
 					'20:52786219'=> 53, '21:44323590'=> 54, '22:21141300'=> 55, '22:37469591'=> 56,
-					'6:56471402'=> 57, '6:146755140'=> 58]);
-
+					'6:56471402'=> 57, '6:146755140'=> 58,
+					'X:4066743'=>0,	 'X:5616964'=>12,  'X:11882557'=>24, 'X:18151389'=>36,
+			   		'X:25779585'=>2, 'X:34091679'=>14, 'X:35632777'=>26, 'X:40871567'=>38,
+			   		'X:42848162'=>4, 'X:94465580'=>16, 'X:116521416'=>28,'X:139920048'=>40,
+			   		'X:47686005'=>6, 'X:95114611'=>18, 'X:119826608'=>30,'X:144091597'=>42,
+			   		'X:67200648'=>8, 'X:104268001'=>20,'X:120864696'=>32,'X:145069663'=>44,
+			   		'X:78397143'=>10,'X:106598707'=>22,'X:126325138'=>34,'X:151150133'=>46]);
+# declar pengelly marker locations
 my %pengelly = ( 'hg19' => ['1:45973928'=> 0, '1:67861520'=> 1, '1:158582646'=> 0, '1:179520506'=> 1,
 					'1:209968684'=> 0, '1:228431095'=> 0, '2:75115108'=> 0, '2:169789016'=> 1,
 					'2:215820013'=> 0, '2:227896976'=> 1, '2:49381585'=> 0, '3:4403767'=> 1,
@@ -41,8 +47,7 @@ my %pengelly = ( 'hg19' => ['1:45973928'=> 0, '1:67861520'=> 1, '1:158582646'=> 
 					'19:55441902'=> 0, '20:6100088'=> 1, '20:19970705'=> 0, '20:35865054'=> 0,
 					'20:52786219'=> 0, '21:44323590'=> 1, '22:21141300'=> 1, '22:37469591'=> 0,
 					'6:56471402'=> 0, '6:146755140'=> 1]);
-
-# declare marker locations 
+# declare autosomal markers
 my %autoSomes = ('hg19' => ['1:45973928'=> 'A:G', '1:67861520'=> 'A:C', '1:158582646'=> 'C:T', '1:179520506'=> 'A:G',
 					'1:209968684'=> 'A:C', '1:228431095'=> 'C:T', '2:75115108'=> 'A:G', '2:169789016'=> 'C:T',
 					'2:215820013'=> 'A:G', '2:227896976'=> 'C:T', '2:49381585'=> 'A:G', '3:4403767'=> 'C:T',
@@ -58,6 +63,13 @@ my %autoSomes = ('hg19' => ['1:45973928'=> 'A:G', '1:67861520'=> 'A:C', '1:15858
 					'19:55441902'=> 'C:T', '20:6100088'=> 'C:T', '20:19970705'=> 'A:G', '20:35865054'=> 'C:T',
 					'20:52786219'=> 'A:G', '21:44323590'=> 'G:T', '22:21141300'=> 'C:T', '22:37469591'=> 'A:G',
 					'6:56471402'=> 'A:G', '6:146755140'=> 'A:G']);
+# declare sex chromosome markers
+my %allosomes = ( 'hg19' => ['X:4066743'=>'G:A','X:5616964'=>'G:A','X:11882557'=>'T:C','X:18151389'=>'G:A',
+			   'X:25779585'=>'T:C','X:34091679'=>'T:C','X:35632777'=>'C:T','X:40871567'=>'G:A',
+			   'X:42848162'=>'C:T','X:94465580'=>'T:G','X:116521416'=>'G:T','X:139920048'=>'T:C',
+			   'X:47686005'=>'C:T','X:95114611'=>'T:C','X:119826608'=>'T:G','X:144091597'=>'G:C',
+			   'X:67200648'=>'T:C','X:104268001'=>'T:C','X:120864696'=>'C:A','X:145069663'=>'G:A',
+			   'X:78397143'=>'T:C','X:106598707'=>'A:G','X:126325138'=>'G:T','X:151150133'=>'G:T']);
 
 # declare some useful global vars
 my $file; my $type; my $baq; my $noise; my $sex;
@@ -69,9 +81,10 @@ sub generate_id{
 	
 	# determine hg version
 	if(exists $input{'hg'}){
-		(%pengelly) = @{$pengelly{$input{'hg'}}};
-		(%bit_loc) = @{$bit_loc{$input{'hg'}}};
-		(%autoSomes) = @{$autoSomes{$input{'hg'}}};
+	 (%pengelly) = @{$pengelly{$input{'hg'}}}; 
+	 (%bit_loc) = @{$bit_loc{$input{'hg'}}};
+	 (%autoSomes) = @{$autoSomes{$input{'hg'}}};
+	 (%allosomes) = @{$allosomes{$input{'hg'}}};
 	}
 	else{
 		#somehow guess it
@@ -233,9 +246,8 @@ sub bam_zygosity{
 						-start=>$input{'loc'},-end=>$input{'loc'});
 	# counters
 	my $reads = 0;
-	
 	my %alleles = ('G' => 0, 'C'=> 0, 'T'=> 0, 'A' => 0);
-
+	
 	# loop through pairs
 	for my $pair(@pairs){
 		my ($f,$s) = $pair->get_SeqFeatures;
@@ -260,30 +272,88 @@ sub bam_zygosity{
 
 	# ensure there were reads
 	if ( $al1 ==0 && $al2 == 0  ){
-		return -1;
+		return (exists $input{'smb'})? "1:0" :-1;
 	}
-	
-	# ensure that it was greater than noise
-	my $zyg_prob = $al1/($al1 +$al2)*100;
-	if($zyg_prob**$reads < $noise){
-		return 0;
-	}		
 
+	# ensure that it was greater than noise
+	my $zyg_prob = $al1/($al1 + $al2) * 100;
+	if($zyg_prob**$reads < $noise){
+	 return (exists $input{'smb'})? "1:0": 0;
+	}
+      
+	# handle if this is for extra bits
+	if(exists $input{'smb'} ){
+	 # if chr is Y chromosome
+	 if($input{'chr'} eq 'Y'){
+
+	 }
+	  
+	 # determine if homozygous
+	 if($al1 >= 0.90 * $reads){
+	    # if homo, determine for which allele
+	    if($al_1 eq $input{'anc'}){
+	       return "0:0";
+	    }
+	    elsif($al_1 eq $input{'alt'}){
+	       return "1:1";
+	    }
+	    return "1:0";
+	 }
+	 else{
+	    # ensure its hetero between the 
+	    # ancestral and alternate alleles
+	    if( $alleles{$input{'anc'}} == 0  or
+	        $alleles{$input{'alt'}} == 0 ){
+		return "1:0";
+	    }
+	    # heterozygous
+	    return "0:1";
+	 }
+	    
+	}
+
+	# return zygosity
 	return ( $al1  >= 0.90 * $reads )? 0:1;	
 }
 
 sub genSMB{
-	# if Y chromosome is present
-	$SMB = (grep $_ eq 'Y', $file->seq_ids)	. 
-		(($sex )? $_[0] : (!(grep $_ eq 'Y', $file->seq_ids))? "1":"0");
+      my @sex_bits = ("0") x 48;
+      my $smb = (grep $_ eq  'Y', $file->seq_ids);
+
+      # if Y chromosome is present
+      $SMB = $smb . (($sex )? $_[0] : (!($smb))? 1:0);
 	
-	# append version block
-	$SMB = "$SMB" . 0 x (6-length(sprintf("%b",$VERSION))) . sprintf("%b",$VERSION);  
+      # append version block
+      $SMB = "$SMB" . 0 x (6-length(sprintf("%b",$VERSION))) . sprintf("%b",$VERSION);
+   
+      # generate additional sex markers
+      if($sex){
+	# loop through allosomes
+	foreach my $key (keys %allosomes){
+	 # grab marker information used to query bam file
+	 my ($chr,$pos) = split(":",$key);
+	 my ($anc,$alt) = split(":",$allosomes{$key});
+	 my $bit = $bit_loc{$key};
+	 
+	 # determine zygosity
+	 my $zyg = bam_zygosity('chr'=>$chr,'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$smb);
+
+	 # modify both bits
+	 if($chr eq 'X'){
+	    my ($bit1,$bit2) = split(":",$zyg);
+	    $sex_bits[$bit] = $bit1;
+	    $sex_bits[$bit+1] = $bit2;
+	 }
+	 # Y chromosome modify left bit
+	 else{
+
+
+	 }
+	}
+      }
+
+      $SMB ="$SMB" . join("",@sex_bits);
 }
-
-
-
-
 
 
 
@@ -292,9 +362,9 @@ sub genSMB{
 package main;
 
 my $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf";
-   #$vcfFile = "/export/home/yusuf/geneomeID/HG00157.mapped.ILLUMINA.bwa.GBR.exome.20120522.bam";
+   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.mapped.ILLUMINA.bwa.GBR.exome.20120522.bam";
 
-my $genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>0,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
+my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>1,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
 print "$genID\n";
 
 
