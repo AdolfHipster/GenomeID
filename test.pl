@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+ #!/usr/bin/perl
 use strict;
 use warnings;
 use Bio::DB::Sam;
@@ -71,9 +71,18 @@ my %allosomes = ( 'hg19' => ['X:4066743'=>'G:A','X:5616964'=>'G:A','X:11882557'=
 			   'X:67200648'=>'T:C','X:104268001'=>'T:C','X:120864696'=>'C:A','X:145069663'=>'G:A',
 			   'X:78397143'=>'T:C','X:106598707'=>'A:G','X:126325138'=>'G:T','X:151150133'=>'G:T']);
 
+
+# declare reference sex chromosome markers
+my %ref_allel = ( 'hg19' => ['X:4066743'=>'G','X:5616964'=>'A','X:11882557'=>'C','X:18151389'=>'A',
+			   'X:25779585'=>'T','X:34091679'=>'T','X:35632777'=>'C','X:40871567'=>'G',
+			   'X:42848162'=>'C','X:94465580'=>'T','X:116521416'=>'G','X:139920048'=>'C',
+			   'X:47686005'=>'T','X:95114611'=>'C','X:119826608'=>'G','X:144091597'=>'G',
+			   'X:67200648'=>'T','X:104268001'=>'C','X:120864696'=>'A','X:145069663'=>'G',
+			   'X:78397143'=>'C','X:106598707'=>'A','X:126325138'=>'G','X:151150133'=>'G']);
+
 # declare some useful global vars
 my $file; my $type; my $baq; my $noise; my $sex;
-my $prefix = ""; my $ucn = 0; my $ref = "1";
+my $prefix = ""; my $ucn; my $ref;
 
 # define bit holders
 my $MADIB = ""; 
@@ -92,6 +101,7 @@ sub generate_id{
 	 (%bit_loc) = @{$bit_loc{$input{'hg'}}};
 	 (%autoSomes) = @{$autoSomes{$input{'hg'}}};
 	 (%allosomes) = @{$allosomes{$input{'hg'}}};
+	 (%ref_allel) = @{$ref_allel{$input{'hg'}}};
 	}
 	else{
 		#somehow guess it
@@ -101,15 +111,11 @@ sub generate_id{
 	$baq = $input{'baq'}; $noise = $input{'noise'};
 	$sex = $input{'sex'}; $file = $input{'file'}; 
 	$ucn = (exists $input{'ucn'})? $input{'ucn'} : 0;
-
-	if(exists $input{'ref'}){
-	    $ref = !$input{'ref'};
-	}
+	$ref = (exists $input{'ref'})? $input{'ref'} : 0;
 
 	# if sex, assume all phenotypes 
 	# are undefined, unless otherwise noted
 	for(my $i=0;$i< scalar @XMB; $i +=2){
-	 last unless $ref;
 	 $XMB[$i] = 1
 	}
 	 	
@@ -127,7 +133,7 @@ sub generate_id{
 		}
 
 		# generate MADIB and AMB
-		#bam_AMB();
+		bam_AMB();
 		
 		# generate sex and version block  markerBits
 		genSMB();
@@ -158,8 +164,9 @@ sub generate_id{
 	$SMB[1] = ($ucn || !$SMB[0] );
       	
 	my $XMB = join("",@XMB);
-
-	 print "$XMB\n";
+	my $AMB = join("",@AMB);
+	
+	print "$AMB\n";
       
 	# print base 64 code
 	#return encode_base64 pack 'B*', "$MADIB$AMB$SMB";
@@ -229,16 +236,21 @@ sub bam_AMB{
 		my ($chr,$pos) = split(":",$key);
 		my ($fir,$las) = split(":",$autoSomes{$key});
 		my $isPengelly = $pengelly{$key};	
-	       	
+	        my $bit = $bit_loc{$key} -1;
+	       
+	       my $j = $bit +1;
+
+		print "key: $key \n\t ref: $fir alt: $las bit: $j\n";
+	        
 		# get zygosity 
 		my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'al1'=>$fir,'al2'=>$las);
-		
+		  print "zyg: $zyg \n\n";
 		# if no reads
 		if($zyg == -1){
 			# append to AMB
-			$AMB[$bit_loc{$key}-1] = "0"; 
+			$AMB[$bit] = "0"; 
 			$missing_markers++;
-			$bit_mis = $bit_loc{$key}-1;
+			$bit_mis = $bit;
 
 			# if this is a missing pengelly, 
 			# then not only pengelly's are read
@@ -246,7 +258,7 @@ sub bam_AMB{
 		}
 		else{
 			# otherwise, append as usual
-			$AMB[$bit_loc{$key}-1] = $zyg;
+			$AMB[$bit] = $zyg;
 
 			# if this is a read non pengelly,
 			# then not only pengelly's are read
@@ -342,6 +354,8 @@ sub vcf_AMB{
 		next unless exists $autoSomes{$key};
 
 		my $zyg = ($fields[9] =~ $homo1 or $fields[9] =~ $homo2)? 0:1;
+	       my $j = $bit +1;
+		print "$key $_ \t bit:$j zyg:$zyg mis:$mis \n\n";
 
 		#fill in the correct amb bit
 		$AMB[$bit] = $zyg * (!$mis);
@@ -426,6 +440,8 @@ sub bam_zygosity{
 	my $al1 = $alleles{$al_1};
 	my $al2 = $alleles{$al_2};
 
+my $j = $al1 + $al2;
+	 print Dumper(\%alleles) . "reads: $reads gReads: $j "; 
 	# ensure there were reads
 	if ( $al1 ==0 && $al2 == 0  ){
 		return (exists $input{'smb'})? "1:0" :-1;
@@ -469,7 +485,7 @@ sub bam_zygosity{
 	}
 
 	# return zygosity
-	return ( $al1  >= 0.90 * $reads )? 0:1;	
+	return ( $al1  >= 0.90 * ($al1+$al2) )? 0:1;	
 }
 
 sub genSMB{
@@ -483,10 +499,12 @@ sub genSMB{
 	 my ($chr,$pos) = split(":",$key);
 	 my ($anc,$alt) = split(":",$allosomes{$key});
 	 my $bit = $bit_loc{$key} -1;
-	 
+	 my $j = $bit +1;
+	 print "key:$key anc:$anc alt:$alt bit:$j\n";
+
 	 # determine zygosity
 	 my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$SMB[0]);
-
+   
 	 # modify both bits
 	 if($chr eq 'X'){
 	    my ($bit1,$bit2) = split(":",$zyg);
@@ -511,10 +529,10 @@ sub genSMB{
 
 package main;
 
-my $vcfFile = "/export/home/yusuf/geneomeID/sample2.vcf";
-   #$vcfFile = "/export/home/yusuf/geneomeID/sample2.bam";
+my $vcfFile = "/export/home/yusuf/geneomeID/sample1.vcf";
+   $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
 
-my $genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>1,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
+my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>0,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
 
 
 
