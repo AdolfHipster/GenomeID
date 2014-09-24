@@ -25,12 +25,12 @@ my %bit_loc = ( 'hg19' => ['1:45973928'=> 1, '1:67861520'=> 2, '1:158582646'=> 3
 					'19:55441902'=> 49, '20:6100088'=> 50, '20:19970705'=> 51, '20:35865054'=> 52,
 					'20:52786219'=> 53, '21:44323590'=> 54, '22:21141300'=> 55, '22:37469591'=> 56,
 					'6:56471402'=> 57, '6:146755140'=> 58,
-					'X:4066743'=>0,	 'X:5616964'=>12,  'X:11882557'=>24, 'X:18151389'=>36,
-			   		'X:25779585'=>2, 'X:34091679'=>14, 'X:35632777'=>26, 'X:40871567'=>38,
-			   		'X:42848162'=>4, 'X:94465580'=>16, 'X:116521416'=>28,'X:139920048'=>40,
-			   		'X:47686005'=>6, 'X:95114611'=>18, 'X:119826608'=>30,'X:144091597'=>42,
-			   		'X:67200648'=>8, 'X:104268001'=>20,'X:120864696'=>32,'X:145069663'=>44,
-			   		'X:78397143'=>10,'X:106598707'=>22,'X:126325138'=>34,'X:151150133'=>46]);
+					'X:4066743'=>1,	 'X:5616964'=>13,  'X:11882557'=>25, 'X:18151389'=>37,
+			   		'X:25779585'=>3, 'X:34091679'=>15, 'X:35632777'=>27, 'X:40871567'=>39,
+			   		'X:42848162'=>5, 'X:94465580'=>17, 'X:116521416'=>29,'X:139920048'=>41,
+			   		'X:47686005'=>7, 'X:95114611'=>19, 'X:119826608'=>31,'X:144091597'=>43,
+			   		'X:67200648'=>9, 'X:104268001'=>21,'X:120864696'=>33,'X:145069663'=>45,
+			   		'X:78397143'=>11,'X:106598707'=>23,'X:126325138'=>35,'X:151150133'=>47]);
 # declar pengelly marker locations
 my %pengelly = ( 'hg19' => ['1:45973928'=> 0, '1:67861520'=> 1, '1:158582646'=> 0, '1:179520506'=> 1,
 					'1:209968684'=> 0, '1:228431095'=> 0, '2:75115108'=> 0, '2:169789016'=> 1,
@@ -73,12 +73,19 @@ my %allosomes = ( 'hg19' => ['X:4066743'=>'G:A','X:5616964'=>'G:A','X:11882557'=
 
 # declare some useful global vars
 my $file; my $type; my $baq; my $noise; my $sex;
-my $MADIB = ""; my $AMB = ""; my $SMB = "";
+my $prefix = ""; my $ucn = 0; my $ref = "1";
+
+# define bit holders
+my $MADIB = ""; 
+my @AMB = ("0") x 58;
+my @SMB = ("0") x 2;
+my $GVB = "";
+my @XMB = ("0") x 48;
 
 sub generate_id{
 	# requires input as hash
 	my (%input) = @_;
-	
+
 	# determine hg version
 	if(exists $input{'hg'}){
 	 (%pengelly) = @{$pengelly{$input{'hg'}}}; 
@@ -93,50 +100,143 @@ sub generate_id{
 	# store input flags
 	$baq = $input{'baq'}; $noise = $input{'noise'};
 	$sex = $input{'sex'}; $file = $input{'file'}; 
-	
+	$ucn = (exists $input{'ucn'})? $input{'ucn'} : 0;
+
+	if(exists $input{'ref'}){
+	    $ref = !$input{'ref'};
+	}
+
+	# if sex, assume all phenotypes 
+	# are undefined, unless otherwise noted
+	for(my $i=0;$i< scalar @XMB; $i +=2){
+	 last unless $ref;
+	 $XMB[$i] = 1
+	}
+	 	
 	# determine if BAM or VCF
 	if ($input{'type'} eq 'bam'){
 		# open file using sam tools
 		$file = Bio::DB::Sam->new(-bam =>$file);		
-	
+	       
+	        # determine if prefix is required
+	        my @chrs = $file->seq_ids;
+	        
+		
+		if($chrs[0] =~ /^([a-z]+)\d+/){
+		  $prefix = $1;
+		}
+
 		# generate MADIB and AMB
-		bam_AMB();
+		#bam_AMB();
 		
 		# generate sex and version block  markerBits
-		genSMB((exists $input{'ucn'})? 1:0);
+		genSMB();
 	}
 	elsif($input{'type'} eq 'vcf'){
+	        # determine if tbi exists
+		if(-e "$file.gz.tbi"){
+		  $file = "$file.gz";
+		  
+		  # query using tabix 
+		  tbi_amb();
+		}
+	       else{
 		# generate MADIB and AMB
 		vcf_AMB();
+	       }
 	}
 	else{
 		die "No supported file type was specified\n";
 	}
-	
+
+	# generate version block
+	$GVB = 0 x (6-length(sprintf("%b",$VERSION))) . sprintf("%b",$VERSION);
+      
+        # generate SI
+	# if ucn or non informative
+	# sex marker bit, then this is 1
+	$SMB[1] = ($ucn || !$SMB[0] );
+      	
+	my $XMB = join("",@XMB);
+
+	 print "$XMB\n";
+      
 	# print base 64 code
 	#return encode_base64 pack 'B*', "$MADIB$AMB$SMB";
-	return "$MADIB$AMB$SMB\n";
+}
+
+sub tbi_amb{
+  my $missing_markers =0; my $only_peng = 1; my $bit_mis = 0;
+  my $homo1 = qr/^(1[\/|]1)[^\/]/;
+  my $homo2 = qr/^(0[\/|]0)[^\/]/;
+  my $misR = qr/^(\.[\/|]\.)/;
+
+   # loop through autoSomal markers
+   foreach my $key(keys %autoSomes){
+      # grab marker location to query vcf file 
+      my ($chr, $pos) = split(":",$key);
+      my $isPengelly = $pengelly{$key};
+      my $bit  = $bit_loc{$key} -1;
+      my $mis = 0; my $zyg = 0;
+
+      # query tabix file
+      my $data = `tabix $file -b 2 -e 2 $chr:$pos-$pos`;
+      my @rows = split(/\n/,$data);
+      my @col = split(/\t/,$data);
+
+      if(scalar @rows > 1){
+	 foreach my $row (@rows){
+	   @col = split(/\t/,$row);
+	   if ($col[1] eq $pos){
+	    last;
+	   }
+	 }
+      }
+
+      # determine zygosity
+      if(! $data eq ""){
+	 $zyg = ($col[9] =~ $homo1 or $col[9] =~ $homo2)? 0:1;
+	 $mis = ($col[9] =~ $misR)? 1:0;
+      }
+
+      # no read was found
+      if ($data eq "" || $mis){
+	 $AMB[$bit] = 0;
+	 $missing_markers++;
+	 $bit_mis = $bit;
+
+	 if($isPengelly){$only_peng =0;}
+      }
+      # read was found
+      else{
+	 # append amb
+	 $AMB[$bit] = $zyg;
+	 
+	 # if this is a non pengelly
+	 # then not only pengelly's are found
+	 if(!$isPengelly){$only_peng =0;}
+      }
+   }
+   genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng, 'bMis'=>$bit_mis);
 }
 
 sub bam_AMB{
-	my (%input) = @_;
 	my $missing_markers = 0; my $only_peng = 1; my $bit_mis =0;
-	my @amb = ("0") x 58;	
 
 	# loop through autoSomal markers
 	foreach my $key (keys %autoSomes){  
 		# grab marker location to query bam file
 		my ($chr,$pos) = split(":",$key);
 		my ($fir,$las) = split(":",$autoSomes{$key});
-		my $isPengelly = $pengelly{$key};		
-		
-		# get zygosity
-		my $zyg = bam_zygosity('chr'=>$chr,'loc'=>$pos,'al1'=>$fir,'al2'=>$las);
+		my $isPengelly = $pengelly{$key};	
+	       	
+		# get zygosity 
+		my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'al1'=>$fir,'al2'=>$las);
 		
 		# if no reads
 		if($zyg == -1){
 			# append to AMB
-			$amb[$bit_loc{$key}-1] = "0"; 
+			$AMB[$bit_loc{$key}-1] = "0"; 
 			$missing_markers++;
 			$bit_mis = $bit_loc{$key}-1;
 
@@ -146,14 +246,13 @@ sub bam_AMB{
 		}
 		else{
 			# otherwise, append as usual
-			$amb[$bit_loc{$key}-1] = $zyg;
+			$AMB[$bit_loc{$key}-1] = $zyg;
 
 			# if this is a read non pengelly,
 			# then not only pengelly's are read
 			if(!$isPengelly){$only_peng = 0;}
 		} 
 	}
-	$AMB = join("",@amb); 
 	genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng,'bMis'=>$bit_mis);
 }
 
@@ -165,7 +264,6 @@ sub vcf_AMB{
 	# define useful constants
 	my $missing_markers = 0;
 	my $only_peng  = 1; my $bit_mis = 0;
-	my @amb = ("0") x 58; 
 	my $found = 0; my $found_peng = 0;
 	
 	open my $vcf, '<', $file or die "$!\n";
@@ -175,22 +273,81 @@ sub vcf_AMB{
 		
 		# get required information
 		my @fields = split(/\t/,$_);
-		my $chr = $fields[0];
+		my $chr = $fields[0]; $chr =~ s/^chr//;
 		my $loc = $fields[1];
 		my $key = "$chr:$loc";
+	        my $Y =0;
+
+		if($chr eq 'Y'){
+		  $SMB[0] = 1;
+		  $Y = 1;
+		}
 
 		# determine if this is marker
-		next unless exists $pengelly{$key};
-		
-		my $zyg = ($fields[9] =~ $homo1 or $fields[9] =~ $homo2)? 0:1;
+		next unless exists $bit_loc{$key};
+
+		my $bit = $bit_loc{$key}-1;
 		my $mis = ($fields[9] =~ $misR)? 1:0;
-		my $bit = $bit_loc{$key};
-		
+	        
+		# determine if sex chromosome marker
+		if(exists $allosomes{$key} && $sex){
+		  my ($ref,$alt) = split(':',$allosomes{$key});
+		  
+		  # determine if multiple alternates listed
+		  if(! $fields[4] =~ /^\s*\w{1}\s*/){
+		     $ucn = 1;
+
+		     # multiple alternates, something is messed
+		     if(index($fields[4],$alt) != -1 ){
+			$fields[4] = $alt;
+		     }
+		     else {$fields[4] = "P";}
+		  }
+
+		  # homozygous to reference allele
+		  if($fields[9] =~ $homo2 && $fields[3] eq $ref){
+		     if($Y){
+
+		     }
+		     else{
+			$XMB[$bit] = 0;
+		     }
+		     next;
+		  }
+		  
+		  # homozygous to alternate allele
+		  if($fields[9] =~ $homo1 && $fields[4] eq $alt){
+		     if($Y){
+
+		     }
+		     else{
+			$XMB[$bit+1] = 1;
+		     }
+
+		     next;
+		  }
+		  
+		  # heterozygous
+		  if(!$mis && $fields[3] eq $ref && $fields[4] eq $alt){
+		     $XMB[$bit] = 0; $XMB[$bit+1] = 1;
+		     next;
+		  }
+		  
+		  if($mis ){
+		     $XMB[$bit] = 1;
+		     next;
+		  }
+		}
+
+		next unless exists $autoSomes{$key};
+
+		my $zyg = ($fields[9] =~ $homo1 or $fields[9] =~ $homo2)? 0:1;
+
 		#fill in the correct amb bit
-		$amb[$bit-1] = $zyg * (!$mis);
+		$AMB[$bit] = $zyg * (!$mis);
 		my $isPengelly = $pengelly{$key};
 		$found_peng += $isPengelly;	
-		
+
 		# determine if missed read
 		if($mis){
 			$missing_markers++;
@@ -204,8 +361,7 @@ sub vcf_AMB{
 		}
 		$found += (!$mis);
 	}
-	$AMB = join("",@amb);
-	
+
 	# deal with missing markers
 	$missing_markers += 58 - $found;
 	$only_peng = ($only_peng && $found_peng == 24);
@@ -287,7 +443,7 @@ sub bam_zygosity{
 	 if($input{'chr'} eq 'Y'){
 
 	 }
-	  
+	 
 	 # determine if homozygous
 	 if($al1 >= 0.90 * $reads){
 	    # if homo, determine for which allele
@@ -317,14 +473,7 @@ sub bam_zygosity{
 }
 
 sub genSMB{
-      my @sex_bits = ("0") x 48;
-      my $smb = (grep $_ eq  'Y', $file->seq_ids);
-
-      # if Y chromosome is present
-      $SMB = $smb . (($sex )? $_[0] : (!($smb))? 1:0);
-	
-      # append version block
-      $SMB = "$SMB" . 0 x (6-length(sprintf("%b",$VERSION))) . sprintf("%b",$VERSION);
+      $SMB[0] = (grep $_ eq  "$prefix"."Y", $file->seq_ids);
    
       # generate additional sex markers
       if($sex){
@@ -333,16 +482,16 @@ sub genSMB{
 	 # grab marker information used to query bam file
 	 my ($chr,$pos) = split(":",$key);
 	 my ($anc,$alt) = split(":",$allosomes{$key});
-	 my $bit = $bit_loc{$key};
+	 my $bit = $bit_loc{$key} -1;
 	 
 	 # determine zygosity
-	 my $zyg = bam_zygosity('chr'=>$chr,'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$smb);
+	 my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$SMB[0]);
 
 	 # modify both bits
 	 if($chr eq 'X'){
 	    my ($bit1,$bit2) = split(":",$zyg);
-	    $sex_bits[$bit] = $bit1;
-	    $sex_bits[$bit+1] = $bit2;
+	    $XMB[$bit] = $bit1;
+	    $XMB[$bit+1] = $bit2;
 	 }
 	 # Y chromosome modify left bit
 	 else{
@@ -351,8 +500,9 @@ sub genSMB{
 	 }
 	}
       }
-
-      $SMB ="$SMB" . join("",@sex_bits);
+      else{
+	 return;
+      }
 }
 
 
@@ -361,12 +511,10 @@ sub genSMB{
 
 package main;
 
-my $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf";
-   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.mapped.ILLUMINA.bwa.GBR.exome.20120522.bam";
+my $vcfFile = "/export/home/yusuf/geneomeID/sample2.vcf";
+   #$vcfFile = "/export/home/yusuf/geneomeID/sample2.bam";
 
-my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>1,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
-print "$genID\n";
-
+my $genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>1,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
 
 
 
