@@ -166,7 +166,7 @@ sub generate_id{
 	my $XMB = join("",@XMB);
 	my $AMB = join("",@AMB);
 	
-	print "$AMB\n";
+	print "$XMB\n";
       
 	# print base 64 code
 	#return encode_base64 pack 'B*', "$MADIB$AMB$SMB";
@@ -237,14 +237,10 @@ sub bam_AMB{
 		my ($fir,$las) = split(":",$autoSomes{$key});
 		my $isPengelly = $pengelly{$key};	
 	        my $bit = $bit_loc{$key} -1;
-	       
-	       my $j = $bit +1;
-
-		print "key: $key \n\t ref: $fir alt: $las bit: $j\n";
 	        
 		# get zygosity 
 		my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'al1'=>$fir,'al2'=>$las);
-		  print "zyg: $zyg \n\n";
+		
 		# if no reads
 		if($zyg == -1){
 			# append to AMB
@@ -276,7 +272,7 @@ sub vcf_AMB{
 	# define useful constants
 	my $missing_markers = 0;
 	my $only_peng  = 1; my $bit_mis = 0;
-	my $found = 0; my $found_peng = 0;
+	my $found = 0; my $found_peng = 0; my $y_present =0;
 	
 	open my $vcf, '<', $file or die "$!\n";
 	while(<$vcf>){
@@ -293,6 +289,7 @@ sub vcf_AMB{
 		if($chr eq 'Y'){
 		  $SMB[0] = 1;
 		  $Y = 1;
+		  $y_present = 0;
 		}
 
 		# determine if this is marker
@@ -303,21 +300,23 @@ sub vcf_AMB{
 	        
 		# determine if sex chromosome marker
 		if(exists $allosomes{$key} && $sex){
-		  my ($ref,$alt) = split(':',$allosomes{$key});
+		  delete $ref_allel{$key};
+		  my ($anc,$alt) = split(':',$allosomes{$key});
 		  
 		  # determine if multiple alternates listed
 		  if(! $fields[4] =~ /^\s*\w{1}\s*/){
 		     $ucn = 1;
 
-		     # multiple alternates, something is messed
+		     # determine if alternate is within list of
+		     # alternates
 		     if(index($fields[4],$alt) != -1 ){
 			$fields[4] = $alt;
 		     }
 		     else {$fields[4] = "P";}
 		  }
 
-		  # homozygous to reference allele
-		  if($fields[9] =~ $homo2 && $fields[3] eq $ref){
+		  # homozygous to acnces allele
+		  if($fields[9] =~ $homo2 && $fields[3] eq $anc){
 		     if($Y){
 
 		     }
@@ -340,13 +339,8 @@ sub vcf_AMB{
 		  }
 		  
 		  # heterozygous
-		  if(!$mis && $fields[3] eq $ref && $fields[4] eq $alt){
+		  if(!$mis && $fields[3] eq $anc && $fields[4] eq $alt){
 		     $XMB[$bit] = 0; $XMB[$bit+1] = 1;
-		     next;
-		  }
-		  
-		  if($mis ){
-		     $XMB[$bit] = 1;
 		     next;
 		  }
 		}
@@ -354,8 +348,6 @@ sub vcf_AMB{
 		next unless exists $autoSomes{$key};
 
 		my $zyg = ($fields[9] =~ $homo1 or $fields[9] =~ $homo2)? 0:1;
-	       my $j = $bit +1;
-		print "$key $_ \t bit:$j zyg:$zyg mis:$mis \n\n";
 
 		#fill in the correct amb bit
 		$AMB[$bit] = $zyg * (!$mis);
@@ -375,6 +367,31 @@ sub vcf_AMB{
 		}
 		$found += (!$mis);
 	}
+
+	# if there was a flag to match
+	# sex information to the reference genome, then
+	# loop through and do so
+	if($ref){
+	 foreach my $key (keys %ref_allel){
+	    my $bit = $bit_loc{$key} - 1;
+	    my ($anc,$alt) = split(":",$allosomes{$key});
+	    
+	    # determine if ref is ancestral or alternate
+	    # and update the bit accordingly
+	    
+	    # homozygous ancestral
+	    # check if y is present, if so
+	    # no modification to the array (already set to 0)
+	    if($ref_allel{$key} eq $anc && !$y_present){
+	       $XMB[$bit] = 0;
+	    }
+
+	    # homozygous alternate
+	    else{
+	       $XMB[$bit+1] = 1;
+	    }
+	 }
+        }
 
 	# deal with missing markers
 	$missing_markers += 58 - $found;
@@ -433,15 +450,14 @@ sub bam_zygosity{
 		
 		$reads++; #increment reads, accounts for noise
 	}
-	# determine the majority alleles
+
+	# determine the 2 most populated alleles
 	# and compare to see if homo or hetero
 	my $al_1 = (sort {$alleles{$a} <=> $alleles{$b}} keys %alleles)[(keys %alleles)-1];
 	my $al_2 = (sort {$alleles{$a} <=> $alleles{$b}} keys %alleles)[(keys %alleles)-2];
 	my $al1 = $alleles{$al_1};
 	my $al2 = $alleles{$al_2};
 
-my $j = $al1 + $al2;
-	 print Dumper(\%alleles) . "reads: $reads gReads: $j "; 
 	# ensure there were reads
 	if ( $al1 ==0 && $al2 == 0  ){
 		return (exists $input{'smb'})? "1:0" :-1;
@@ -461,7 +477,7 @@ my $j = $al1 + $al2;
 	 }
 	 
 	 # determine if homozygous
-	 if($al1 >= 0.90 * $reads){
+	 if($al1 >= 0.90 * ($al1 + $al2)){
 	    # if homo, determine for which allele
 	    if($al_1 eq $input{'anc'}){
 	       return "0:0";
@@ -485,6 +501,7 @@ my $j = $al1 + $al2;
 	}
 
 	# return zygosity
+	# ensuring that $al1 is over 90% of reads
 	return ( $al1  >= 0.90 * ($al1+$al2) )? 0:1;	
 }
 
@@ -499,8 +516,6 @@ sub genSMB{
 	 my ($chr,$pos) = split(":",$key);
 	 my ($anc,$alt) = split(":",$allosomes{$key});
 	 my $bit = $bit_loc{$key} -1;
-	 my $j = $bit +1;
-	 print "key:$key anc:$anc alt:$alt bit:$j\n";
 
 	 # determine zygosity
 	 my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$SMB[0]);
@@ -518,9 +533,6 @@ sub genSMB{
 	 }
 	}
       }
-      else{
-	 return;
-      }
 }
 
 
@@ -529,10 +541,10 @@ sub genSMB{
 
 package main;
 
-my $vcfFile = "/export/home/yusuf/geneomeID/sample1.vcf";
-   $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
+my $vcfFile = "/export/home/yusuf/geneomeID/sample2.vcf";
+   #$vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
 
-my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>0,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
+my $genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>1,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
 
 
 
