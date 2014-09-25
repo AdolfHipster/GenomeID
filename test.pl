@@ -121,7 +121,8 @@ sub generate_id{
    }
 
    # store input flags
-   $baq = $input{'baq'}; $noise = $input{'noise'};
+   $baq = (exists $input{'baq'})? $input{'baq'} : 30; 
+   $noise = (exists $input{'noise'})? $input{'noise'} : 0.05;
    $sex = $input{'sex'}; $file = $input{'file'}; 
    $ucn = (exists $input{'ucn'})? $input{'ucn'} : 0;
    $ref = (exists $input{'ref'})? $input{'ref'} : 0;
@@ -164,6 +165,9 @@ sub generate_id{
 	 vcf_AMB();
       }
    }
+   elsif($input{'type'} eq 'tbi'){
+      tbi_amb();
+   }
    else{
       die "No supported file type was specified\n";
    }
@@ -179,17 +183,18 @@ sub generate_id{
    my $XMB = join("",@XMB);
    my $AMB = join("",@AMB);
 	
-   print "$XMB\n";
+   print "$AMB\n";
       
    # print base 64 code
    #return encode_base64 pack 'B*', "$MADIB$AMB$SMB";
 }
 
 sub tbi_amb{
-  my $missing_markers =0; my $only_peng = 1; my $bit_mis = 0;
-  my $homo1 = qr/^(1[\/|]1)[^\/]/;
-  my $homo2 = qr/^(0[\/|]0)[^\/]/;
-  my $misR = qr/^(\.[\/|]\.)/;
+   my $missing_markers =0; my $only_peng = 1; my $bit_mis = 0;
+   my $homo1 = qr/^(1[\/|]1)[^\/]?/;
+   my $homo2 = qr/^0[\/|]0[^\/]?/;
+   my $misR = qr/^(\.[\/|]\.)/;
+   $prefix = "chr";
 
    # loop through autoSomal markers
    foreach my $key(keys %autoSomes){
@@ -200,14 +205,23 @@ sub tbi_amb{
       my $mis = 0; my $zyg = 0;
 
       # query tabix file
+      # need to figure out optimal way to determine
+      # if prefix is used
       my $data = `tabix $file -b 2 -e 2 $chr:$pos-$pos`;
+      if($data eq ""){
+	 $data = `tabix $file -b 2 -e 2 $prefix$chr:$pos-$pos`;
+      }
+
       my @rows = split(/\n/,$data);
       my @col = split(/\t/,$data);
-
+     
+      # sometimes query may give more 
+      # than one row (i dunno why)
       if(scalar @rows > 1){
 	 foreach my $row (@rows){
 	   @col = split(/\t/,$row);
 	   if ($col[1] eq $pos){
+	    $data = $row;
 	    last;
 	   }
 	 }
@@ -238,6 +252,38 @@ sub tbi_amb{
       }
    }
    genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng, 'bMis'=>$bit_mis);
+   
+   if(!$sex){
+      return;
+   }
+
+   # loop through allosomal markers
+   foreach my $key (keys %allosomes){
+      # grab marker location to query vcf file
+      my ($chr, $pos) = split(":",$key);
+      my ($ref,$alt) = split(":", $allosomes{$key});
+      my $bit = $bit_loc{$key} - 1;
+      my $zyg = 0;
+
+      # query tabix file
+      my $data = `tabix $file -b 2 -e 2 $chr:$pos-$pos`;
+      if($data eq ""){
+	 $data = `tabix $file -b 2 -e 2 $prefix:$pos-$pos`;
+      }
+      my @rows = split(/\n/,$data);
+      my @col = split(/\t/,$data);
+
+      # ensure that only one row was returned in from
+      # the tabix query
+      if(scalar @rows > 1){
+	 print "$data\n";
+      }
+
+      # determine if multiple alternates were listed
+      print "$data\n";
+
+      last;
+   }
 }
 
 sub bam_AMB{
@@ -551,10 +597,11 @@ sub genSMB{
 
 package main;
 
-my $vcfFile = "/export/home/yusuf/geneomeID/sample2.vcf";
+my $vcfFile = "/export/home/yusuf/geneomeID/sample1.vcf";
    #$vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
+   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
 
-my $genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>1,'baq'=>30,'noise'=>0.05,'hg'=>'hg19');
+my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'sex'=>0,'hg'=>'hg19');
 
 
 
