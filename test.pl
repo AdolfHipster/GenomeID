@@ -22,6 +22,11 @@ my %allosomes; my %ref_allel;
 my $MADIB; my @AMB; my @SMB; 
 my $GVB; my @XMB;
 
+# some precompiled regexes
+my $homo1 = qr/^(1[\/|]1)[^\/]?/;
+my $homo2 = qr/^0[\/|]0[^\/]?/;
+my $misR = qr/^(\.[\/|]\.)/;
+
 sub regen{
 # define marker relative bit locations
 %bit_loc = ( 'hg19' => ['1:45973928'=> 1, '1:67861520'=> 2, '1:158582646'=> 3, '1:179520506'=> 4,
@@ -127,8 +132,9 @@ sub generate_id{
    $ucn = (exists $input{'ucn'})? $input{'ucn'} : 0;
    $ref = (exists $input{'ref'})? $input{'ref'} : 0;
 
-   # if sex, assume all phenotypes 
-   # are undefined, unless otherwise noted
+   # for the XMB, we assume everything is
+   # undefined, later we will fix this 
+   # if necessary
    for(my $i=0;$i< scalar @XMB; $i +=2){
       $XMB[$i] = 1
    }
@@ -140,33 +146,16 @@ sub generate_id{
 	       
       # determine if prefix is required
       my @chrs = $file->seq_ids;
-	        
-		
       if($chrs[0] =~ /^([a-z]+)\d+/){
-	 $prefix = $1;
+         $prefix = $1;
       }
-
-      # generate MADIB and AMB
-      bam_AMB();
-		
-      # generate sex and version block  markerBits
-      genSMB();
+      bam;
    }
    elsif($input{'type'} eq 'vcf'){
-      # determine if tbi exists
-      if(-e "$file.gz.tbi"){
-	 $file = "$file.gz";
-		  
-	 # query using tabix 
-	 tbi_amb();
-      }
-      else{
-	 # generate MADIB and AMB
-	 vcf_AMB();
-      }
+      vcf;
    }
    elsif($input{'type'} eq 'tbi'){
-      tbi_amb();
+      tbi;
    }
    else{
       die "No supported file type was specified\n";
@@ -188,14 +177,17 @@ sub generate_id{
    print "$genString\n";
     
    # print base 64 code
-   #return encode_base64 pack 'B*', "$MADIB$AMB$SMB";
+   #return encode_base64 pack 'B*', $genString;
 }
 
-sub tbi_amb{
+=comment
+
+Tabix Parser
+
+=cut
+sub tbi{
    my $missing_markers =0; my $only_peng = 1; my $bit_mis = 0;
-   my $homo1 = qr/^(1[\/|]1)[^\/]?/;
-   my $homo2 = qr/^0[\/|]0[^\/]?/;
-   my $misR = qr/^(\.[\/|]\.)/;
+   
    $prefix = "chr";
 
    # loop through autoSomal markers
@@ -211,7 +203,7 @@ sub tbi_amb{
       # if prefix is used
       my $data = `tabix $file -b 2 -e 2 $chr:$pos-$pos`;
       if($data eq ""){
-	 $data = `tabix $file -b 2 -e 2 $prefix$chr:$pos-$pos`;
+         $data = `tabix $file -b 2 -e 2 $prefix$chr:$pos-$pos`;
       }
 
       my @rows = split(/\n/,$data);
@@ -220,150 +212,105 @@ sub tbi_amb{
       # sometimes query may give more 
       # than one row (i dunno why)
       if(scalar @rows > 1){
-	 foreach my $row (@rows){
-	   @col = split(/\t/,$row);
-	   if ($col[1] eq $pos){
-	    $data = $row;
-	    last;
-	   }
-	 }
+         foreach my $row (@rows){
+            @col = split(/\t/,$row);
+            if ($col[1] eq $pos){
+               $data = $row;
+               last;
+            }
+         }
       }
 
       # determine zygosity
       if(! $data eq ""){
-	 $zyg = ($col[9] =~ $homo1 or $col[9] =~ $homo2)? 0:1;
-	 $mis = ($col[9] =~ $misR)? 1:0;
+         $zyg = ($col[9] =~ $homo1 or $col[9] =~ $homo2)? 0:1;
+         $mis = ($col[9] =~ $misR)? 1:0;
       }
 
       # no read was found
       if ($data eq "" || $mis){
-	 $AMB[$bit] = 0;
-	 $missing_markers++;
-	 $bit_mis = $bit;
+         $AMB[$bit] = 0;
+         $missing_markers++;
+         $bit_mis = $bit;
 
-	 if($isPengelly){$only_peng =0;}
+         if($isPengelly){$only_peng =0;}
       }
+      
       # read was found
       else{
-	 # append amb
-	 $AMB[$bit] = $zyg;
+         # append amb
+         $AMB[$bit] = $zyg;
 	 
-	 # if this is a non pengelly
-	 # then not only pengelly's are found
-	 if(!$isPengelly){$only_peng =0;}
+         # if this is a non pengelly
+         # then not only pengelly's are found
+         if(!$isPengelly){$only_peng =0;}
       }
    }
+
+   # generate MADIB
    genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng, 'bMis'=>$bit_mis);
    
    if(!$sex){
       return;
    }
-   my $y_present =0;
 
    # loop through allosomal markers
    foreach my $key (keys %allosomes){
       # grab marker location to query vcf file
-      my ($chr, $pos) = split(":",$key);
       my ($anc,$alt) = split(":", $allosomes{$key});
       my $bit = $bit_loc{$key} - 1;
-      my $zyg = 0;
-      my $Y = 0; 
-      my $mis =0;
 
       # query tabix file
       my $data = `tabix $file -b 2 -e 2 $chr:$pos-$pos`;
       if($data eq ""){
-	 $data = `tabix $file -b 2 -e 2 $prefix$chr:$pos-$pos`;
+         $data = `tabix $file -b 2 -e 2 $prefix$chr:$pos-$pos`;
       }
       my @rows = split(/\n/,$data);
-      my @col = split(/\t/,$data);
-
-      my $j = $bit+1;
 
       # determine if there was results,
       # if not, assign to reference if flag
       # was specified
       if($data eq ""){
-	 if($ref){
-	    my $ref_al = $ref_allel{$key};
-	    
-	    # homozygous ancestral
-	    if($ref_al eq $anc && !$y_present){
-	       $XMB[$bit] =0;
-	    }
-	    
-	    # homozygous alternate
-	    else{
-	       $XMB[$bit+1] = 1;
-	    }
-	 }
-	 next;
-      }
+         if($ref){
+            my $ref_al = $ref_allel{$key};
 
-      # determine if X or y Chromosome
-      if($chr eq 'Y'){
-	 $SMB[0] = 1; $Y = 1;
-	 $y_present = 1;
+            # homozygous ancestral
+            if($ref_al eq $anc && !$SMB[0]){
+               $XMB[$bit] = 0;
+            }
+
+            # homozygous alternate
+            else{
+               $XMB[$bit+1] = 1;
+            }
+         }
+         next;
       }
 
       # ensure that only one row was returned in from
       # the tabix query
       if(scalar @rows > 1){
-	 foreach my $row (@rows){
-	    @col = split(/\t/,$row);
-	    if($col[1] eq $pos){
-	       $data = $row;
-	       last;
-	    }
-	 }
-      }
-      
-      # determine if multiple alternates were listed
-      if(! $col[4] =~ /^\s*\w{1}\s*/){
-	 $ucn =1;
-
-	 # determine if alternate is listed
-	 if( index($col[4],$alt) != -1){
-	    $col[4] = $alt;
-	 }
-	 else{ $col[4] = "P"; }
+         foreach my $row (@rows){
+            my @col = split(/\t/,$row);
+            
+            if($col[1] eq $pos){
+               $data = $row;
+               last;
+            }
+         }
       }
 
-      $mis = ($col[9] =~ $misR)? 1:0;
-
-      # homozygous to ancestral allele
-      if($col[9] =~ $homo2 && $col[3] eq $anc){
-	 if($Y){
-
-	 }
-	 else{ $XMB[$bit] = 0;}
-      }
-
-      # homozygous to alternate allele
-      elsif($col[9] =~ $homo1 && $col[4] eq $alt){
-	 if($Y){
-
-	 }
-	 else{ $XMB[$bit+1] = 1;}
-      }
-
-      # heterozygous
-      elsif(!$mis && $col[3] eq $anc && $col[4] eq $alt){
-	 if($Y){
-
-	 }
-	 elsif($y_present){
-	    $XMB[$bit+1] = 1;
-	 }
-	 else{
-	    $XMB[$bit +1] = 1; $XMB[$bit] = 0;
-	 }
-      }
-
+      # build the xmb bits
+      xmb_builder( 'key' => $key, 'data' => $data );
    }
 }
 
-sub bam_AMB{
+=comment
+
+BAM Parser
+
+=cut
+sub bam{
    my $missing_markers = 0; my $only_peng = 1; my $bit_mis =0;
 
    # loop through autoSomal markers
@@ -379,36 +326,68 @@ sub bam_AMB{
 		
       # if no reads
       if($zyg == -1){
-	 # append to AMB
-	 $AMB[$bit] = "0"; 
-	 $missing_markers++;
-	 $bit_mis = $bit;
+         # append to AMB
+         $AMB[$bit] = "0"; 
+         $missing_markers++;
+         $bit_mis = $bit;
 
-	 # if this is a missing pengelly, 
-	 # then not only pengelly's are read
-	 if($isPengelly){ $only_peng =0;}
+         # if this is a missing pengelly, 
+         # then not only pengelly's are read
+         if($isPengelly){ $only_peng =0;}
       }
+      
+      # otherwise a read was found
       else{
-	 # otherwise, append as usual
-	 $AMB[$bit] = $zyg;
+         $AMB[$bit] = $zyg;
 
-	 # if this is a read non pengelly,
-	 # then not only pengelly's are read
-	 if(!$isPengelly){$only_peng = 0;}
+         # if this is a read non pengelly,
+         # then not only pengelly's are read
+         if(!$isPengelly){$only_peng = 0;}
       } 
    }
    genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng,'bMis'=>$bit_mis);
+
+   $SMB[0] = (grep $_ eq  "$prefix"."Y", $file->seq_ids);
+   
+   # generate additional sex markers
+   if($sex){
+         # loop through allosomes
+         foreach my $key (keys %allosomes){
+         # grab marker information used to query bam file
+         my ($chr,$pos) = split(":",$key);
+         my ($anc,$alt) = split(":",$allosomes{$key});
+         my $bit = $bit_loc{$key} -1;
+
+         # determine zygosity
+         my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$SMB[0]);
+      
+         # modify both bits
+         if($chr eq 'X'){
+            my ($bit1,$bit2) = split(":",$zyg);
+            $XMB[$bit] = $bit1;
+            $XMB[$bit+1] = $bit2;
+         }
+         
+         # Y chromosome modify left bit
+         else{
+
+         }
+
+      }
+   }
 }
 
-sub vcf_AMB{
-   my $homo1 = qr/^1[\/|]1[^\/]?/;
-   my $homo2 = qr/^0[\/|]0[^\/]?/;
-   my $misR = qr/^(\.[\/|]\.)/;
 
+=comment
+   
+VCF Parser
+
+=cut
+sub vcf{
    # define useful constants
    my $missing_markers = 0;
    my $only_peng  = 1; my $bit_mis = 0;
-   my $found = 0; my $found_peng = 0; my $y_present =0;
+   my $found = 0; my $found_peng = 0; 
 	
    open my $vcf, '<', $file or die "$!\n";
    while(<$vcf>){
@@ -420,13 +399,6 @@ sub vcf_AMB{
       my $chr = $fields[0]; $chr =~ s/^chr//;
       my $loc = $fields[1];
       my $key = "$chr:$loc";
-      my $Y =0;
-
-      if($chr eq 'Y'){
-	 $SMB[0] = 1;
-	 $Y = 1;
-	 $y_present = 0;
-      }
 
       # determine if this is marker
       next unless exists $bit_loc{$key};
@@ -436,50 +408,15 @@ sub vcf_AMB{
 	        
       # determine if sex chromosome marker
       if(exists $allosomes{$key} && $sex){
-	 delete $ref_allel{$key};
-	 my ($anc,$alt) = split(':',$allosomes{$key});
-		  
-	 # determine if multiple alternates listed
-	 if(! $fields[4] =~ /^\s*\w{1}\s*/){
-	    $ucn = 1;
+         delete $ref_allel{$key};
 
-	    # determine if alternate is within list of
-	    # alternates
-	    if(index($fields[4],$alt) != -1 ){
-	       $fields[4] = $alt;
-	    }
-	    else {$fields[4] = "P";}
-	 }
+         xmb_builder( 'key' => $key,'data' => $data );
 
-	 # homozygous to acnces allele
-	 if($fields[9] =~ $homo2 && $fields[3] eq $anc){
-	    if($Y){
-
-	    }
-      	    else{
-	       $XMB[$bit] = 0;
-	    }
-	       next;
-	 }
-		  
-	 # homozygous to alternate allele
-	 if($fields[9] =~ $homo1 && $fields[4] eq $alt){
-	    if($Y){
-
-	    }
-	    else{
-	       $XMB[$bit+1] = 1;
-	    }
-	       next;
-	 }
-		  
-	 # heterozygous
-	 if(!$mis && $fields[3] eq $anc && $fields[4] eq $alt){
-	    $XMB[$bit] = 0; $XMB[$bit+1] = 1;
-	    next;
-	 }
+         next;
       }
 
+      # if its not a sex chromosome marker, then
+      # it must be an autosome
       next unless exists $autoSomes{$key};
 
       my $zyg = ($fields[9] =~ $homo1 or $fields[9] =~ $homo2)? 0:1;
@@ -491,10 +428,10 @@ sub vcf_AMB{
 
       # determine if missed read
       if($mis){
-	 $missing_markers++;
-	 $bit_mis = $bit;
+         $missing_markers++;
+         $bit_mis = $bit;
 
-	 if($isPengelly){$only_peng = 0;}
+         if($isPengelly){$only_peng = 0;}
 
       }elsif(!$isPengelly){$only_peng = 0;}
 		
@@ -506,23 +443,23 @@ sub vcf_AMB{
    # loop through and do so
    if($ref){
       foreach my $key (keys %ref_allel){
-	 my $bit = $bit_loc{$key} - 1;
-	 my ($anc,$alt) = split(":",$allosomes{$key});
-	    
-	 # determine if ref is ancestral or alternate
-	 # and update the bit accordingly
-	    
-	 # homozygous ancestral
-	 # check if y is present, if so
-	 # no modification to the array (already set to 0)
-	 if($ref_allel{$key} eq $anc && !$y_present){
-	    $XMB[$bit] = 0;
-	 }
+         my $bit = $bit_loc{$key} - 1;
+         my ($anc,$alt) = split(":",$allosomes{$key});
+   	    
+         # determine if ref is ancestral or alternate
+         # and update the bit accordingly
+   	    
+         # homozygous ancestral
+         # check if y is present, if so
+         # no modification to the array (already set to 0)
+         if($ref_allel{$key} eq $anc && !$SMB[0]){
+            $XMB[$bit] = 0;
+         }
 
-	 # homozygous alternate
-	 else{
-	    $XMB[$bit+1] = 1;
-	 }
+         # homozygous alternate
+         else{
+            $XMB[$bit+1] = 1;
+         }
       }
    }
 
@@ -533,9 +470,46 @@ sub vcf_AMB{
    genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng,'bMis'=>$bit_mis);	
 }
 
+
+=comment
+
+   UTILITY/HELPER SUBROUTINES 
+      
+      - not directly involved in the process
+      - but do help do stuff
+
+   genMADIB
+      generates the MADIB for all forms of input files
+
+      @param miss_count    number of missing bits
+      @param oPeng         1|0 only the Pengelly markers read
+      @param bMis          the last location of a missed read
+      @return              void
+   
+   xmb_builder
+      For vcf and tabix files, this will build the 
+      xmb marker bits
+
+      @param key        a string of the form <chr>:<position>
+      @param data       VCF row for a specific location
+      @return           void
+
+   bam_zygosity
+      For bam files, this will automate the quering of 
+      the bam file and determine if the specific diploid
+      is homozygous or not
+
+      @param chr        the chromosome location
+      @param loc        the location on the chromosome
+      @param smb        1|0, determine sex or not
+      @param anc        ancestral allele
+      @param alt        alternate allele
+      @return           returns the zygosity of the snp
+=cut
+
 sub genMADIB{
    my (%input) = @_;
-	
+   
    # if no missing markers, MADIB = 0
    if($input{'miss_count'} == 0){
       $MADIB = "000000";
@@ -558,29 +532,95 @@ sub genMADIB{
    }
 }
 
+sub xmb_builder{
+   my (%input) = @_;
+
+   # start to define useful constants
+   # inorder to build the XMB given
+   # a vcf line and allosome key
+   my ($chr,$pos) = split(':',$input{'key'});
+   my $row = $input{'data'};
+   my @col = split(/\t/,$row);
+   my $mis = 0;
+   my $isY = 0;
+
+   # get information that directly is involved
+   # with the value/location of the bit
+   my ($anc,$alt) = split(":", $allosomes{$key});
+   my $bit = $bit_loc{$key} - 1;
+
+   # determine if it is a Y chromosome
+   if($chr eq 'Y'){
+      $isY = 1;
+      $SMB[0] = 1;
+   }
+
+   # determine if multiple alternates were listed
+   if(! $col[4] =~ /^\s*\w{1}\s*/){
+      $ucn =1;
+
+      # determine if alternate is listed
+      if( index($col[4],$alt) != -1){
+         $col[4] = $alt;
+      }
+      else{ $col[4] = "P"; }
+   }
+
+   $mis = ($col[9] =~ $misR)? 1:0;
+
+   # homozygous to ancestral allele
+   if($col[9] =~ $homo2 && $col[3] eq $anc){
+      if($isY){
+
+      }
+      else{ $XMB[$bit] = 0;}
+   }
+
+   # homozygous to alternate allele
+   elsif($col[9] =~ $homo1 && $col[4] eq $alt){
+      if($isY){
+
+      }
+      else{ $XMB[$bit+1] = 1;}
+   }
+
+   # heterozygous
+   elsif(!$mis && $col[3] eq $anc && $col[4] eq $alt){
+      if($isY){
+
+      }
+      elsif($SMB[0]){
+         $XMB[$bit+1] = 1;
+      }
+      else{
+         $XMB[$bit +1] = 1; $XMB[$bit] = 0;
+      }
+   }
+}
+
 sub bam_zygosity{
    my (%input) = @_;
-	
+   
    # get aligned reads at given position
    my @pairs = $file->get_features_by_location(-type=>'read_pair',-seq_id=>$input{'chr'},
-						-start=>$input{'loc'},-end=>$input{'loc'});
+                  -start=>$input{'loc'},-end=>$input{'loc'});
    # counters
    my $reads = 0;
    my %alleles = ('G' => 0, 'C'=> 0, 'T'=> 0, 'A' => 0);
-	
+   
    # loop through pairs
    for my $pair(@pairs){
       my ($f,$s) = $pair->get_SeqFeatures;
       my $start = $input{'loc'} - $f->start;
-		
+      
       # filter if score is not good enough
       my $score = ($f->qscore)[$start];
       next unless $score >= $baq;
-		
+      
       # increment the allele counters
       my $bp = substr($f->query->dna,$start,1);
       $alleles{$bp}++;
-		
+      
       $reads++; #increment reads, accounts for noise
    }
 
@@ -602,74 +642,45 @@ sub bam_zygosity{
       return (exists $input{'smb'})? "1:0": 0;
    }
       
-   # handle if this is for extra bits
+   # handle if this is sex chromosome bits
    if(exists $input{'smb'} ){
       # if chr is Y chromosome
       if($input{'chr'} eq 'Y'){
 
       }
-	 
+    
       # determine if homozygous
       if($al1 >= 0.90 * ($al1 + $al2)){
-	 # if homo, determine for which allele
-	 if($al_1 eq $input{'anc'}){
-	    return "0:0";
-	 }
-	 elsif($al_1 eq $input{'alt'}){
-	    return "1:1";
-	 }
-	    return "1:0";
+         # if homo, determine for which allele
+         if($al_1 eq $input{'anc'}){
+            return "0:0";
+         }
+         elsif($al_1 eq $input{'alt'}){
+            return "1:1";
+         }
+         return "1:0";
       }
+      
+      # then must be some form of 
+      # hetero zygous
       else{
-	 # ensure its hetero between the 
-	 # ancestral and alternate alleles
-	 if( $alleles{$input{'anc'}} == 0  or
-	    $alleles{$input{'alt'}} == 0 ){
-	    return "1:0";
-	 }
-	 # heterozygous
-	 return "0:1";
+         # ensure its hetero between the 
+         # ancestral and alternate alleles
+         if( $alleles{$input{'anc'}} == 0  or
+            $alleles{$input{'alt'}} == 0 ){
+               return "1:0";
+         }
+         
+         # heterozygous
+         return "0:1";
       }
-	    
+       
    }
 
    # return zygosity
    # ensuring that $al1 is over 90% of reads
-   return ( $al1  >= 0.90 * ($al1+$al2) )? 0:1;	
+   return ( $al1  >= 0.90 * ($al1+$al2) )? 0:1; 
 }
-
-sub genSMB{
-   $SMB[0] = (grep $_ eq  "$prefix"."Y", $file->seq_ids);
-   
-   # generate additional sex markers
-   if($sex){
-      # loop through allosomes
-      foreach my $key (keys %allosomes){
-	 # grab marker information used to query bam file
-	 my ($chr,$pos) = split(":",$key);
-	 my ($anc,$alt) = split(":",$allosomes{$key});
-	 my $bit = $bit_loc{$key} -1;
-
-	 # determine zygosity
-	 my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$SMB[0]);
-   
-	 # modify both bits
-	 if($chr eq 'X'){
-	    my ($bit1,$bit2) = split(":",$zyg);
-	    $XMB[$bit] = $bit1;
-	    $XMB[$bit+1] = $bit2;
-	 }
-	 # Y chromosome modify left bit
-	 else{
-
-
-	 }
-      }
-   }
-}
-
-
-
 
 
 package main;
