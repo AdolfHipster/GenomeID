@@ -324,8 +324,8 @@ sub bam_AMB{
 }
 
 sub vcf_AMB{
-   my $homo1 = qr/^(1[\/|]1)[^\/]/;
-   my $homo2 = qr/^(0[\/|]0)[^\/]/;
+   my $homo1 = qr/^1[\/|]1[^\/]?/;
+   my $homo2 = qr/^0[\/|]0[^\/]?/;
    my $misR = qr/^(\.[\/|]\.)/;
 
    # define useful constants
