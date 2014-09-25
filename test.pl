@@ -178,13 +178,15 @@ sub generate_id{
    # generate SIB
    # if ucn or non informative
    # sex marker bit, then this is 1
-   $SMB[1] = ($ucn || !$SMB[0] );
+   $SMB[1] = ($ucn || !$SMB[0] )? 1: "0";
       	
-   my $XMB = join("",@XMB);
+   my $XMB = ($sex)? join("",@XMB) : "";
    my $AMB = join("",@AMB);
-	
-   print "$AMB\n";
-      
+   my $SMB = join("",@SMB);
+
+   my $genString = "$MADIB$AMB$SMB$GVB$XMB";
+   print "$genString\n";
+    
    # print base 64 code
    #return encode_base64 pack 'B*', "$MADIB$AMB$SMB";
 }
@@ -256,33 +258,108 @@ sub tbi_amb{
    if(!$sex){
       return;
    }
+   my $y_present =0;
 
    # loop through allosomal markers
    foreach my $key (keys %allosomes){
       # grab marker location to query vcf file
       my ($chr, $pos) = split(":",$key);
-      my ($ref,$alt) = split(":", $allosomes{$key});
+      my ($anc,$alt) = split(":", $allosomes{$key});
       my $bit = $bit_loc{$key} - 1;
       my $zyg = 0;
+      my $Y = 0; 
+      my $mis =0;
 
       # query tabix file
       my $data = `tabix $file -b 2 -e 2 $chr:$pos-$pos`;
       if($data eq ""){
-	 $data = `tabix $file -b 2 -e 2 $prefix:$pos-$pos`;
+	 $data = `tabix $file -b 2 -e 2 $prefix$chr:$pos-$pos`;
       }
       my @rows = split(/\n/,$data);
       my @col = split(/\t/,$data);
 
+      my $j = $bit+1;
+
+      # determine if there was results,
+      # if not, assign to reference if flag
+      # was specified
+      if($data eq ""){
+	 if($ref){
+	    my $ref_al = $ref_allel{$key};
+	    
+	    # homozygous ancestral
+	    if($ref_al eq $anc && !$y_present){
+	       $XMB[$bit] =0;
+	    }
+	    
+	    # homozygous alternate
+	    else{
+	       $XMB[$bit+1] = 1;
+	    }
+	 }
+	 next;
+      }
+
+      # determine if X or y Chromosome
+      if($chr eq 'Y'){
+	 $SMB[0] = 1; $Y = 1;
+	 $y_present = 1;
+      }
+
       # ensure that only one row was returned in from
       # the tabix query
       if(scalar @rows > 1){
-	 print "$data\n";
+	 foreach my $row (@rows){
+	    @col = split(/\t/,$row);
+	    if($col[1] eq $pos){
+	       $data = $row;
+	       last;
+	    }
+	 }
+      }
+      
+      # determine if multiple alternates were listed
+      if(! $col[4] =~ /^\s*\w{1}\s*/){
+	 $ucn =1;
+
+	 # determine if alternate is listed
+	 if( index($col[4],$alt) != -1){
+	    $col[4] = $alt;
+	 }
+	 else{ $col[4] = "P"; }
       }
 
-      # determine if multiple alternates were listed
-      print "$data\n";
+      $mis = ($col[9] =~ $misR)? 1:0;
 
-      last;
+      # homozygous to ancestral allele
+      if($col[9] =~ $homo2 && $col[3] eq $anc){
+	 if($Y){
+
+	 }
+	 else{ $XMB[$bit] = 0;}
+      }
+
+      # homozygous to alternate allele
+      elsif($col[9] =~ $homo1 && $col[4] eq $alt){
+	 if($Y){
+
+	 }
+	 else{ $XMB[$bit+1] = 1;}
+      }
+
+      # heterozygous
+      elsif(!$mis && $col[3] eq $anc && $col[4] eq $alt){
+	 if($Y){
+
+	 }
+	 elsif($y_present){
+	    $XMB[$bit+1] = 1;
+	 }
+	 else{
+	    $XMB[$bit +1] = 1; $XMB[$bit] = 0;
+	 }
+      }
+
    }
 }
 
@@ -598,10 +675,10 @@ sub genSMB{
 package main;
 
 my $vcfFile = "/export/home/yusuf/geneomeID/sample1.vcf";
-   #$vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
-   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
+   $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
+   #$vcfFile = "/export/home/yusuf/geneomeID/FC08-NGS051.mapreads.diBayes.chrX.vcf.gz";
 
-my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'sex'=>0,'hg'=>'hg19');
+my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>0,'hg'=>'hg19','ref'=>1);
 
 
 
