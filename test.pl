@@ -149,13 +149,13 @@ sub generate_id{
       if($chrs[0] =~ /^([a-z]+)\d+/){
          $prefix = $1;
       }
-      bam;
+      bam();
    }
    elsif($input{'type'} eq 'vcf'){
-      vcf;
+      vcf();
    }
    elsif($input{'type'} eq 'tbi'){
-      tbi;
+      tbi();
    }
    else{
       die "No supported file type was specified\n";
@@ -257,6 +257,7 @@ sub tbi{
    # loop through allosomal markers
    foreach my $key (keys %allosomes){
       # grab marker location to query vcf file
+      my ($chr,$pos) = split(':', $key);
       my ($anc,$alt) = split(":", $allosomes{$key});
       my $bit = $bit_loc{$key} - 1;
 
@@ -410,7 +411,7 @@ sub vcf{
       if(exists $allosomes{$key} && $sex){
          delete $ref_allel{$key};
 
-         xmb_builder( 'key' => $key,'data' => $data );
+         xmb_builder( 'key' => $key,'data' => $_ );
 
          next;
       }
@@ -538,6 +539,7 @@ sub xmb_builder{
    # start to define useful constants
    # inorder to build the XMB given
    # a vcf line and allosome key
+   my $key = $input{'key'};
    my ($chr,$pos) = split(':',$input{'key'});
    my $row = $input{'data'};
    my @col = split(/\t/,$row);
@@ -685,11 +687,12 @@ sub bam_zygosity{
 
 package main;
 
-my $vcfFile = "/export/home/yusuf/geneomeID/sample1.vcf";
-   $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
+my $vcfFile = "/export/home/yusuf/geneomeID/sample2.vcf";
    #$vcfFile = "/export/home/yusuf/geneomeID/FC08-NGS051.mapreads.diBayes.chrX.vcf.gz";
 
-my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>0,'hg'=>'hg19','ref'=>1);
+my $genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>0,'hg'=>'hg19','ref'=>1);
+$genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>1,'hg'=>'hg19','ref'=>1);
+$genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>1,'hg'=>'hg19','ref'=>0);
 
 
 
