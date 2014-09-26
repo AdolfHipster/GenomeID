@@ -7,16 +7,21 @@ use MIME::Base64;
 package genomeID;
 use MIME::Base64; 
 use Data::Dumper;
+use Tie::IxHash;
 
 
 # define input variables
 my $VERSION = 1;
 my $file; my $type; my $noise; my $sex;
 my $prefix; my $ucn; my $ref; my $baq;
+my $guess_hg;
 
 # define static constants
-my %bit_loc; my %pengelly; my %autoSomes;
-my %allosomes; my %ref_allel;
+my %bit_loc_static; my %pengelly_static; my %autoSomes_static;
+my %allosomes_static; my %ref_allel_static;
+
+my %bit_loc; my %pengelly; my %autoSomes; my %allosomes;
+my %ref_allel;
 
 # define bit holders
 my $MADIB; my @AMB; my @SMB; 
@@ -29,7 +34,7 @@ my $misR = qr/^(\.[\/|]\.)/;
 
 sub regen{
 # define marker relative bit locations
-%bit_loc = ( 'hg19' => ['1:45973928'=> 1, '1:67861520'=> 2, '1:158582646'=> 3, '1:179520506'=> 4,
+%bit_loc_static = ( 'hg19' => ['1:45973928'=> 1, '1:67861520'=> 2, '1:158582646'=> 3, '1:179520506'=> 4,
 					'1:209968684'=> 5, '1:228431095'=> 6, '2:75115108'=> 7, '2:169789016'=> 8,
 					'2:215820013'=> 9, '2:227896976'=> 10, '2:49381585'=> 11, '3:4403767'=> 12,
 					'3:45989044'=> 13, '3:148727133'=> 14, '4:5749904'=> 15, '4:86915848'=> 16,
@@ -51,7 +56,7 @@ sub regen{
 			   		'X:67200648'=>9, 'X:104268001'=>21,'X:120864696'=>33,'X:145069663'=>45,
 			   		'X:78397143'=>11,'X:106598707'=>23,'X:126325138'=>35,'X:151150133'=>47]);
 # declar pengelly marker locations
-%pengelly = ( 'hg19' => ['1:45973928'=> 0, '1:67861520'=> 1, '1:158582646'=> 0, '1:179520506'=> 1,
+%pengelly_static = ( 'hg19' => ['1:45973928'=> 0, '1:67861520'=> 1, '1:158582646'=> 0, '1:179520506'=> 1,
 					'1:209968684'=> 0, '1:228431095'=> 0, '2:75115108'=> 0, '2:169789016'=> 1,
 					'2:215820013'=> 0, '2:227896976'=> 1, '2:49381585'=> 0, '3:4403767'=> 1,
 					'3:45989044'=> 0, '3:148727133'=> 0, '4:5749904'=> 1, '4:86915848'=> 0,
@@ -67,7 +72,7 @@ sub regen{
 					'20:52786219'=> 0, '21:44323590'=> 1, '22:21141300'=> 1, '22:37469591'=> 0,
 					'6:56471402'=> 0, '6:146755140'=> 1]);
 # declare autosomal markers
-%autoSomes = ('hg19' => ['1:45973928'=> 'A:G', '1:67861520'=> 'A:C', '1:158582646'=> 'C:T', '1:179520506'=> 'A:G',
+%autoSomes_static = ('hg19' => ['1:45973928'=> 'A:G', '1:67861520'=> 'A:C', '1:158582646'=> 'C:T', '1:179520506'=> 'A:G',
 					'1:209968684'=> 'A:C', '1:228431095'=> 'C:T', '2:75115108'=> 'A:G', '2:169789016'=> 'C:T',
 					'2:215820013'=> 'A:G', '2:227896976'=> 'C:T', '2:49381585'=> 'A:G', '3:4403767'=> 'C:T',
 					'3:45989044'=> 'G:T', '3:148727133'=> 'A:G', '4:5749904'=> 'T:C', '4:86915848'=> 'C:T',
@@ -83,7 +88,7 @@ sub regen{
 					'20:52786219'=> 'A:G', '21:44323590'=> 'G:T', '22:21141300'=> 'C:T', '22:37469591'=> 'A:G',
 					'6:56471402'=> 'A:G', '6:146755140'=> 'A:G']);
 # declare sex chromosome markers
-%allosomes = ( 'hg19' => ['X:4066743'=>'G:A','X:5616964'=>'G:A','X:11882557'=>'T:C','X:18151389'=>'G:A',
+%allosomes_static = ( 'hg19' => ['X:4066743'=>'G:A','X:5616964'=>'G:A','X:11882557'=>'T:C','X:18151389'=>'G:A',
 			   'X:25779585'=>'T:C','X:34091679'=>'T:C','X:35632777'=>'C:T','X:40871567'=>'G:A',
 			   'X:42848162'=>'C:T','X:94465580'=>'T:G','X:116521416'=>'G:T','X:139920048'=>'T:C',
 			   'X:47686005'=>'C:T','X:95114611'=>'T:C','X:119826608'=>'T:G','X:144091597'=>'G:C',
@@ -92,14 +97,15 @@ sub regen{
 
 
 # declare reference sex chromosome markers
-%ref_allel = ( 'hg19' => ['X:4066743'=>'G','X:5616964'=>'A','X:11882557'=>'C','X:18151389'=>'A',
+%ref_allel_static = ( 'hg19' => ['X:4066743'=>'G','X:5616964'=>'A','X:11882557'=>'C','X:18151389'=>'A',
 			   'X:25779585'=>'T','X:34091679'=>'T','X:35632777'=>'C','X:40871567'=>'G',
 			   'X:42848162'=>'C','X:94465580'=>'T','X:116521416'=>'G','X:139920048'=>'C',
 			   'X:47686005'=>'T','X:95114611'=>'C','X:119826608'=>'G','X:144091597'=>'G',
 			   'X:67200648'=>'T','X:104268001'=>'C','X:120864696'=>'A','X:145069663'=>'G',
 			   'X:78397143'=>'C','X:106598707'=>'A','X:126325138'=>'G','X:151150133'=>'G']);
 
-$prefix = ""; 
+$prefix = "";
+$guess_hg  =0;
 
 # define bit holders
 $MADIB = ""; @AMB = ("0") x 58; @SMB = ("0") x 2;
@@ -115,14 +121,34 @@ sub generate_id{
 
    # determine hg version
    if(exists $input{'hg'}){
-      (%pengelly) = @{$pengelly{$input{'hg'}}}; 
-      (%bit_loc) = @{$bit_loc{$input{'hg'}}};
-      (%autoSomes) = @{$autoSomes{$input{'hg'}}};
-      (%allosomes) = @{$allosomes{$input{'hg'}}};
-      (%ref_allel) = @{$ref_allel{$input{'hg'}}};
+      
+      # determine if hg version is supported
+      if(! exists $bit_loc_static{$input{'hg'}}){
+	 die "Version: $input{'hg'} is not supported\n";
+      }
+
+      (%pengelly) = @{$pengelly_static{$input{'hg'}}}; 
+      (%bit_loc) = @{$bit_loc_static{$input{'hg'}}};
+      (%autoSomes) = @{$autoSomes_static{$input{'hg'}}};
+      (%allosomes) = @{$allosomes_static{$input{'hg'}}};
+      (%ref_allel) = @{$ref_allel_static{$input{'hg'}}};
    }
+
+   # otherwise guess it by looking at marker alignment
    else{
-      #somehow guess it
+      $guess_hg = 1;
+
+      # order the hash locations
+      tie my %autoSomes, 'Tie::IxHash';
+      tie my %allosomes, 'Tie::IxHash';
+
+      # start with a guess of hg19
+      my $hg = 'hg19';
+      (%pengelly) = @{$pengelly_static{ $hg }};
+      (%bit_loc) = @{$bit_loc_static{ $hg }};
+      (%autoSomes) = @{$autoSomes_static{ $hg }};
+      (%allosomes) = @{$allosomes_static{ $hg }};
+      (%ref_allel) = @{$ref_allel_static{ $hg }};
    }
 
    # store input flags
@@ -142,7 +168,7 @@ sub generate_id{
    # determine if BAM or VCF
    if ($input{'type'} eq 'bam'){
       # open file using sam tools
-      $file = Bio::DB::Sam->new(-bam =>$file);		
+      $file = Bio::DB::Sam->new(-bam =>$file);
 	       
       # determine if prefix is required
       my @chrs = $file->seq_ids;
@@ -687,12 +713,10 @@ sub bam_zygosity{
 
 package main;
 
-my $vcfFile = "/export/home/yusuf/geneomeID/sample2.vcf";
+my $vcfFile = "/export/home/yusuf/geneomeID/sample2.bam";
    #$vcfFile = "/export/home/yusuf/geneomeID/FC08-NGS051.mapreads.diBayes.chrX.vcf.gz";
 
-my $genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>0,'hg'=>'hg19','ref'=>1);
-$genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>1,'hg'=>'hg19','ref'=>1);
-$genID = genomeID::generate_id('type'=>'vcf','file'=>$vcfFile,'sex'=>1,'hg'=>'hg19','ref'=>0);
+my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>0,'hg'=>'hg19','ref'=>1);
 
 
 
