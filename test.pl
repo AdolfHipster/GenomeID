@@ -177,7 +177,7 @@ sub generate_id{
       #tie my %allosomes, 'Tie::IxHash';
 
       # start with a guess of hg19
-      my $hg = 'hg19';
+      my $hg = 'hg38';
       (%pengelly) = @{$pengelly_static{ $hg }};
       (%bit_loc) = @{$bit_loc_static{ $hg }};
       (%autoSomes) = @{$autoSomes_static{ $hg }};
@@ -816,10 +816,10 @@ sub bam_zygosity{
 
 package main;
 
-my $vcfFile = "/export/home/yusuf/geneomeID/sample2.bam";
-   #$vcfFile = "/export/home/yusuf/geneomeID/FC08-NGS051.mapreads.diBayes.chrX.vcf.gz";
+my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
+   $vcfFile = "/export/home/yusuf/geneomeID/FC08-NGS051.mapreads.diBayes.chrX.vcf.gz";
 
-my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>0,'hg'=>'hg19','ref'=>1);
+my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'sex'=>1,'ref'=>1);
 
 
 
