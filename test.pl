@@ -14,7 +14,7 @@ use Tie::IxHash;
 my $VERSION = 1;
 my $file; my $type; my $noise; my $sex;
 my $prefix; my $ucn; my $ref; my $baq;
-my $guess_hg;
+my $guess_hg; my $ref_hg;
 
 # define static constants
 my %bit_loc_static; my %pengelly_static; my %autoSomes_static;
@@ -126,7 +126,7 @@ sub generate_id{
       if(! exists $bit_loc_static{$input{'hg'}}){
 	 die "Version: $input{'hg'} is not supported\n";
       }
-
+      $ref_hg = $input{'hg'};
       (%pengelly) = @{$pengelly_static{$input{'hg'}}}; 
       (%bit_loc) = @{$bit_loc_static{$input{'hg'}}};
       (%autoSomes) = @{$autoSomes_static{$input{'hg'}}};
@@ -137,10 +137,10 @@ sub generate_id{
    # otherwise guess it by looking at marker alignment
    else{
       $guess_hg = 1;
-
-      # order the hash locations
-      tie my %autoSomes, 'Tie::IxHash';
-      tie my %allosomes, 'Tie::IxHash';
+      
+      # order the hash locations (dont need this)?
+      #tie my %autoSomes, 'Tie::IxHash';
+      #tie my %allosomes, 'Tie::IxHash';
 
       # start with a guess of hg19
       my $hg = 'hg19';
@@ -505,6 +505,19 @@ sub vcf{
       - not directly involved in the process
       - but do help do stuff
 
+   guessHG
+      makes an educated guess at the correct human
+      genome version, if not specified
+
+      @param key	   a string of the form <chr>:<position>
+      @param ref	   the refrence allel from the sample file entered
+      @param alt	   the alternate allel from the sample
+      @param bam	   1|0 => bam sample | not a bam sample
+			      if (bam && !sex) then ref is first diploid allele
+			      and alt is second diploid allele
+      @param sex	   1|0 => key is allosome | key is autosome
+      @return		   1|0 => continue | do not continue
+
    genMADIB
       generates the MADIB for all forms of input files
 
@@ -533,6 +546,62 @@ sub vcf{
       @param alt        alternate allele
       @return           returns the zygosity of the snp
 =cut
+
+sub guessHG{
+   # declare input variables
+   my (%input) = @_;
+   my $key = $input{'key'};
+   my $smp_ref = $input{'ref'};
+   my $smp_alt = $input{'alt'};
+   my $isBam = $input{'bam'};
+   my $isSex = $input{'sex'};
+
+   # determine ref allele for initial guess
+   my $cur_ref = $ref_allel{$key};
+   
+   # check reference alleles at hg positions
+   # which everone maps out, works
+   foreach my $hg (keys %ref_allel_static){
+      next if $hg eq $ref_hg;
+
+      my (%ref) = @{$ref_allel_static{$hg}};
+      my $ref_allel = $ref{$key};
+
+      # determine if ref allel lines up
+      if($ref_allel eq $smp_ref){
+
+	 # make sure that initial guess is wrong
+	 if($ref_allel eq $cur_ref){
+	    return 1;
+	 }
+	 
+	 # if the initial guess is wrong, then
+	 # it must be this reference allel
+	 $guess_hg = 0;
+	 
+	 # change to correct reference genome
+	 (%pengelly) = @{ $pengelly_static{ $hg } };
+	 (%bit_loc) = @{ $bit_loc_static{ $hg } };
+	 (%autoSomes) = @{ $autoSomes_static{ $hg } };
+	 (%ref_allel) = @{ $ref_allel_static{ $hg } };
+	 
+	 # signal parent subroutine to stop running
+	 return 0;
+      }
+      
+   }
+   
+   # by this point, only the initial guess
+   # was correct, thus we are good
+   if($cur_ref eq $smp_ref){
+      $guess_hg = 0;
+      return 1;
+   }
+   
+   # The reference genome could not be determined
+   # so die
+   die 'Reference genome version not determined, please specify';
+}
 
 sub genMADIB{
    my (%input) = @_;
