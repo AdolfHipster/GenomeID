@@ -240,7 +240,7 @@ sub generate_id{
       #tie my %allosomes, 'Tie::IxHash';
 
       # start with a guess of hg19
-      my $hg = 'hg38';
+      my $hg = 'hg38'; $ref_hg = $hg;
       (%pengelly) = @{$pengelly_static{ $hg }};
       (%bit_loc) = @{$bit_loc_static{ $hg }};
       (%autoSomes) = @{$autoSomes_static{ $hg }};
@@ -349,6 +349,8 @@ sub tbi{
          $zyg = ($col[9] =~ $homo1 or $col[9] =~ $homo2)? 0:1;
          $mis = ($col[9] =~ $misR)? 1:0;
       }
+      
+      #if($col[3] 
 
       # no read was found
       if ($data eq "" || $mis){
@@ -612,7 +614,6 @@ sub vcf{
       @param bam	   1|0 => bam sample | not a bam sample
 			      if (bam && !sex) then ref is first diploid allele
 			      and alt is second diploid allele
-      @param sex	   1|0 => key is allosome | key is autosome
       @return		   1|0 => continue | do not continue
 
    genMADIB
@@ -651,8 +652,7 @@ sub guessHG{
    my $smp_ref = $input{'ref'};
    my $smp_alt = $input{'alt'};
    my $isBam = $input{'bam'};
-   my $isSex = $input{'sex'};
-
+   
    # determine ref allele for initial guess
    my $cur_ref = $ref_allel{$key};
    
@@ -880,9 +880,9 @@ sub bam_zygosity{
 package main;
 
 my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
-   $vcfFile = "/export/home/yusuf/geneomeID/FC08-NGS051.mapreads.diBayes.chrX.vcf.gz";
+   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
 
-my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'sex'=>1,'ref'=>1);
+my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'sex'=>0,'ref'=>0);
 
 
 
