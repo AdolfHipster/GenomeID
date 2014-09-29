@@ -614,10 +614,7 @@ sub vcf{
 
       @param key	   a string of the form <chr>:<position>
       @param ref	   the refrence allel from the sample file entered
-      @param alt	   the alternate allel from the sample
       @param bam	   1|0 => bam sample | not a bam sample
-			      if (bam && !sex) then ref is first diploid allele
-			      and alt is second diploid allele
       @return		   1|0 => continue | do not continue
 
    genMADIB
@@ -654,7 +651,6 @@ sub guessHG{
    my (%input) = @_;
    my $key = $input{'key'};
    my $smp_ref = $input{'ref'};
-   my $smp_alt = $input{'alt'};
    my $isBam = $input{'bam'};
    
    # determine ref allele for initial guess
