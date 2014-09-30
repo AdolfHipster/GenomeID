@@ -1,12 +1,10 @@
  #!/usr/bin/perl
 use strict;
 use warnings;
-use Bio::DB::Sam;
-use MIME::Base64;
 
 package genomeID;
-use MIME::Base64; 
-use Data::Dumper;
+use MIME::Base64;
+use Bio::DB::Sam;
 
 
 # define input variables
@@ -338,10 +336,7 @@ sub generate_id{
    my $SMB = join("",@SMB);
 
    my $genString = "$MADIB$AMB$SMB$GVB$XMB";
-   print "$genString\n";
-    
-   # print base 64 code
-   #return encode_base64 pack 'B*', $genString;
+   return encode_base64 pack 'B*', $genString;
 }
 
 =comment
@@ -947,11 +942,11 @@ sub bam_zygosity{
 
 package main;
 
-my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
-   #$vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
+#my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
+#   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
 
-my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>0,'ref'=>0);
-
+#my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'hg'=>'hg19','sex'=>1,'ref'=>1);
+#print "$genID\n";
 
 
 
