@@ -31,6 +31,8 @@ my $homo1 = qr/^(1[\/|]1)[^\/]?/;
 my $homo2 = qr/^0[\/|]0[^\/]?/;
 my $misR = qr/^(\.[\/|]\.)/;
 
+my %chr1_lengths = ( '248956422'=>'hg38', '249250621'=>'hg19');
+
 sub regen{
 # define marker relative bit locations
 %bit_loc_static = ( 
@@ -293,6 +295,24 @@ sub generate_id{
       if($chrs[0] =~ /^([a-z]+)\d+/){
          $prefix = $1;
       }
+      
+      # determine hg version if not specified
+      if($guess_hg){
+	 my $chrLength = $file->length("$prefix"."1");
+
+	 if(! exists $chr1_lengths{$chrLength}){
+	    die "Could not determine human genome version, please specify\n";
+	 }
+
+	 $ref_hg = $chr1_lengths{ $chrLength };
+	 (%pengelly) = @{$pengelly_static{ $ref_hg }};
+	 (%bit_loc) = @{$bit_loc_static{ $ref_hg }};
+	 (%autoSomes) = @{$autoSomes_static{ $ref_hg }};
+	 (%allosomes) = @{$allosomes_static{ $ref_hg }};
+	 (%ref_allel) = @{$ref_allel_static{ $ref_hg }};
+	 $guess_hg =0;
+      }
+
       bam();
    }
    elsif($input{'type'} eq 'vcf'){
@@ -370,8 +390,16 @@ sub tbi{
          $zyg = ($col[9] =~ $homo1 or $col[9] =~ $homo2)? 0:1;
          $mis = ($col[9] =~ $misR)? 1:0;
       }
-      
-      #if($col[3] 
+
+      if($data ne "" && $guess_hg){
+	 my $continue = guessHG('key'=>$key,'ref'=>$col[3],'bam'=>0);
+	 
+	 # determine if a change was detected
+	 if(!$continue){
+	    tbi();
+	    return;
+	 }
+      }
 
       # no read was found
       if ($data eq "" || $mis){
@@ -547,6 +575,18 @@ sub vcf{
       my $loc = $fields[1];
       my $key = "$chr:$loc";
 
+      # if we need to guess, extra step
+      if($guess_hg){
+	 my $continue = guessHG('key'=>$key,'ref'=>$fields[3],'bam'=>0);
+
+	 # determine if change of reference was 
+	 # detected
+	 if(! $continue){
+	    vcf();
+	    return;
+	 }
+      }
+
       # determine if this is marker
       next unless exists $bit_loc{$key};
 
@@ -671,14 +711,18 @@ sub guessHG{
    my $isBam = $input{'bam'};
    
    # determine ref allele for initial guess
-   my $cur_ref = $ref_allel{$key};
-   
+   my $cur_ref = (exists $ref_allel{$key})? 
+      $ref_allel{$key} : "";
+
    # check reference alleles at hg positions
    # which everone maps out, works
    foreach my $hg (keys %ref_allel_static){
       next if $hg eq $ref_hg;
 
       my (%ref) = @{$ref_allel_static{$hg}};
+      
+      # ensure the position exists
+      next unless exists $ref{$key};
       my $ref_allel = $ref{$key};
 
       # determine if ref allel lines up
@@ -694,6 +738,7 @@ sub guessHG{
 	 $guess_hg = 0;
 	 
 	 # change to correct reference genome
+	 $ref_hg =$hg;
 	 (%pengelly) = @{ $pengelly_static{ $hg } };
 	 (%bit_loc) = @{ $bit_loc_static{ $hg } };
 	 (%autoSomes) = @{ $autoSomes_static{ $hg } };
@@ -704,9 +749,15 @@ sub guessHG{
       }
       
    }
-   
-   # by this point, only the initial guess
-   # was correct, thus we are good
+
+   # ensure that the initial guess has an key
+   # stored as a location
+   if(! exists $bit_loc{$key}){
+      return 1;
+   }
+
+   # by this point, only the initial guess was
+   # correct, thus we are good
    if($cur_ref eq $smp_ref){
       $guess_hg = 0;
       return 1;
@@ -897,9 +948,9 @@ sub bam_zygosity{
 package main;
 
 my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
-   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
+   #$vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
 
-my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'sex'=>0,'ref'=>0);
+my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'sex'=>0,'ref'=>0);
 
 
 
