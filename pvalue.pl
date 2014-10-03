@@ -16,11 +16,8 @@ my @bin_ids;
 
 sub allosome_prob{
    @bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
+   check_version();
    my $prob = 0; my $goodData = 1;
-
-   # force to first 72 bits 
-   $bin_ids[0] = substr($bin_ids[0],0,72);
-   $bin_ids[1] = substr($bin_ids[1],0,72);
 
    # determine how many to skip over
    my @fBits = (bin2dec(substr($bin_ids[0],0,6)) ,
@@ -75,6 +72,9 @@ sub allosome_prob{
    return ($prob,$goodData);
 }
 
+# calculate probability for sex marker bits
+
+
 
 # subroutine to loop through bits and compare matches
 sub cAutosome_match{
@@ -118,7 +118,7 @@ sub bin2dec {
 
 package main;
 
-my $id1 = "A3U2KK3WR/qB";
-my $id2 = "B2U2Kg1WQkJB";
+my $id1 = "A2U2Kg1WQkJBqqqqqqqq";
+my $id2 = "A2U2Kg1WQkJBAzw8w8zA";
 
 prob::allosome_prob($id1,$id2);
