@@ -1,6 +1,8 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
+
+package prob;
 use MIME::Base64;
 use Data::Dumper;
 use Switch;
@@ -10,15 +12,10 @@ use Math::CDF qw(:all);
 # to calulate probabilities and what not
 my @peng_bits = (26, 45, 64, 48, 8, 21, 46, 30, 36, 10, 51, 14, 38, 60, 52, 53, 42, 16, 33, 61, 40, 56, 18);
 my $prob_success  = 0.6;
+my @bin_ids;
 
-my $id1 = "A3U2KK3WR/qB";
-my $id2 = "B2U2Kg1WQkJB";
-
-my @bin_ids = (unpack('B*', decode_base64($id1)) , unpack('B*', decode_base64($id2)) );
-check_version();
-
-# determine if 12 or 20 character id given
-if(length $id1 == 12 || $id2 == 12){
+sub allosome_prob{
+   @bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
    my $prob = 0; my $goodData = 1;
 
    # force to first 72 bits 
@@ -75,14 +72,9 @@ if(length $id1 == 12 || $id2 == 12){
       $prob = 1 - pbinom($k,$n,$prob_success);
    }
    
-   print "$k \t $n\n";
-   print "$prob \t $goodData\n";
+   return ($prob,$goodData);
 }
 
-# 20 character id given
-else{
-
-}
 
 # subroutine to loop through bits and compare matches
 sub cAutosome_match{
@@ -122,3 +114,11 @@ sub check_version{
 sub bin2dec {
    unpack("N", pack("B32", substr("0" x 32 . shift, -32)));
 }
+
+
+package main;
+
+my $id1 = "A3U2KK3WR/qB";
+my $id2 = "B2U2Kg1WQkJB";
+
+prob::allosome_prob($id1,$id2);
