@@ -92,7 +92,39 @@ sub allosome_prob{
 	if(substr($bin_ids[0],64,1) eq substr($bin_ids[1],64,1) ){
 		# determine if Y chromosome present
 		if(substr($bin_ids[0],64,1)){
+			my $bitCount = 1;
+			
+			# loop over XMB
+			for(my $i=72;$i<119;$i += 2){
+				my $marker1 = substr($bin_ids[0],$i,2);
+				my $marker2 = substr($bin_ids[1],$i,2);
 
+				# first 9 bits are for Y chr
+				# thus compare lower bit
+				if($bitCount >= 9){
+					$marker1 = substr($bin_ids[0],$i+1,1);
+					$marker2 = substr($bin_ids[1],$i+1,1);
+				}
+
+				# ensure markers are the same and defined
+				next unless $marker1 eq $marker2;
+				next unless $marker1 ne "10";
+
+				# get frequencies
+				my $bit = ($bitCount >= 9)? $i+1 : $i;
+				my @freq = (0.4,0.6); #@{allosome_freq{$bit}};
+				
+				my $power = ($bitCount >= 9)? 2 : 1;
+				# multiply probabilities
+				if($marker1 eq "01"){
+					$prob *= 2 * ($freq[0] * $freq[1] ) **2;
+				}
+				else{
+					$prob *= $freq[substr($marker1,0,1)] ** $power;
+				}
+
+				$bitCount++;
+			}
 		}
 
 		# no Y chromosome present
@@ -136,7 +168,7 @@ sub mayRelated{
 	@bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
 	check_version();
 	my $bitcount = 1;
-
+	
 	# determine if not same gender
 	if( substr($bin_ids[0],64,1) ne substr($bin_ids[1],64,1) ){
 		# loop over right handed bits, ensure same marker
