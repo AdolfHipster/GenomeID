@@ -14,6 +14,10 @@ my @peng_bits = (26, 45, 64, 48, 8, 21, 46, 30, 36, 10, 51, 14, 38, 60, 52, 53, 
 my $prob_success  = 0.6;
 my @bin_ids;
 
+=comment
+%alosome_freq = ('bit' => [anc freq, atl freq])
+=cut
+
 sub autosome_prob{
 	@bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
 	check_version();
@@ -75,8 +79,54 @@ sub autosome_prob{
 
 # calculate probability for sex marker bits
 sub allosome_prob{
+	if(length $_[0] != 20 || length $_[1] != 20){
+		die "Id for allosome probability must be 20 characters\n";
+	}
 
+	@bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
+	check_version();
 
+	my $prob = 1;
+	
+	# determine if same gender
+	if(substr($bin_ids[0],64,1) eq substr($bin_ids[1],64,1) ){
+		# determine if Y chromosome present
+		if(substr($bin_ids[0],64,1)){
+
+		}
+
+		# no Y chromosome present
+		else{
+			# loop over XMB
+			for(my $i=72;$i<119;$i +=2){
+				my $marker1 = substr($bin_ids[0],$i,2);
+				my $marker2 = substr($bin_ids[1],$i,2);
+				
+				# ensure markers are same and defined
+				next unless $marker1 eq $marker2;
+				next unless $marker1 ne "10";
+				
+				# get frequencies
+				my @freq = (0.4,0.6); #@{allosome_freq{$i+1} };
+
+				# multiple probability over
+				if($marker1 eq "01"){
+					$prob *= 2 * ( $freq[0] * $freq[1] ) **2;
+				}
+				else{
+					$prob *= $freq[substr($marker1,0,1)] ** 2;
+				}
+
+			}
+		}
+	}
+
+	# not same gender, more difficult
+	else{
+
+	}
+
+	return $prob;
 }
 
 
@@ -123,6 +173,7 @@ sub bin2dec {
 package main;
 
 my $id1 = "A2U2Kg1WQkJBqqqqqqqq";
-my $id2 = "A2U2Kg1WQkJBAzw8w8zA";
+my $id2 = "/AAAAAAAAABBvqurhquu";
 
-prob::allosome_prob($id1,$id2);
+my $h = prob::allosome_prob($id2,$id2);
+my ($p,$j) = prob::autosome_prob("A2U2Kg1WQkJB","A3U2KK3WR/qB");
