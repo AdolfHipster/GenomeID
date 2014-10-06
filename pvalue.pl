@@ -129,6 +129,30 @@ sub allosome_prob{
 	return $prob;
 }
 
+sub mayRelated{
+	if(length $_[0] != 20 || length $_[1] != 20){
+		die "Id must be 20 characters\n";
+	}
+	@bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
+	check_version();
+	my $bitcount = 1;
+
+	# determine if not same gender
+	if( substr($bin_ids[0],64,1) ne substr($bin_ids[1],64,1) ){
+		# loop over right handed bits, ensure same marker
+		for(my $i=73; $i<120;$i+=2){
+			last unless $bitcount != 9;
+
+			$bitcount++;
+			next if(substr($bin_ids[0],$i,1) eq substr($bin_ids[1],$i,1) );
+
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
 
 # subroutine to loop through bits and compare matches
 sub cAutosome_match{
@@ -177,3 +201,6 @@ my $id2 = "/AAAAAAAAABBvqurhquu";
 
 my $h = prob::allosome_prob($id2,$id2);
 my ($p,$j) = prob::autosome_prob("A2U2Kg1WQkJB","A3U2KK3WR/qB");
+
+my $v = prob::mayRelated($id1,$id2);
+print "$v\n";
