@@ -14,9 +14,15 @@ my @peng_bits = (26, 45, 64, 48, 8, 21, 46, 30, 36, 10, 51, 14, 38, 60, 52, 53, 
 my $prob_success  = 0.6;
 my @bin_ids;
 
-=comment
-%alosome_freq = ('bit' => [anc freq, atl freq])
-=cut
+my %allosome_freq = (
+	73 => [1-0.418,0.418], 75 => [1-0.489,0.489], 77 => [0.495,1-0.495], 
+	79 => [1-0.341,0.341], 81 => [1-0.6,0.4], 83 => [0.485,1-0.485], 
+	85 => [1-0.489,0.489], 87 => [1-0.484,0.484], 89 => [1-0.426,0.426], 
+	91 => [0.388,1-0.338], 93 => [1-0.408,0.408], 95 => [1-0.453,0.453], 
+	97 => [1-0.427,0.427], 99 => [0.415,1-0.415], 101 => [0.441,1-0.441], 
+	103 => [1-0.332,0.332], 105 => [0.368,1-0.368], 107 => [1-0.447,0.447], 
+	109 => [1-0.412,0.412], 111 => [1-0.409,0.409], 113 => [0.273,1-0.273], 
+	115 => [1-0.426,0.426], 117 => [1-0.336,0.336], 119 => [1-0.336,0.336]);
 
 sub autosome_prob{
 	@bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
@@ -112,15 +118,15 @@ sub allosome_prob{
 
 				# get frequencies
 				my $bit = ($bitCount >= 9)? $i+1 : $i;
-				my @freq = (0.4,0.6); #@{allosome_freq{$bit}};
+				my @freq = ${allosome_freq{$bit}};
 				
 				my $power = ($bitCount >= 9)? 2 : 1;
 				# multiply probabilities
 				if($marker1 eq "01"){
-					$prob *= 2 * ($freq[0] * $freq[1] ) **2;
+					$prob *= 2 * ($freq[0][0] * $freq[0][1] ) **2;
 				}
 				else{
-					$prob *= $freq[substr($marker1,0,1)] ** $power;
+					$prob *= $freq[0][substr($marker1,0,1)] ** $power;
 				}
 
 				$bitCount++;
@@ -139,14 +145,14 @@ sub allosome_prob{
 				next unless $marker1 ne "10";
 				
 				# get frequencies
-				my @freq = (0.4,0.6); #@{allosome_freq{$i+1} };
+				my @freq = ${allosome_freq{$i+1} };
 
 				# multiple probability over
 				if($marker1 eq "01"){
-					$prob *= 2 * ( $freq[0] * $freq[1] ) **2;
+					$prob *= 2 * ( $freq[0][0] * $freq[0][1] ) **2;
 				}
 				else{
-					$prob *= $freq[substr($marker1,0,1)] ** 2;
+					$prob *= $freq[0][substr($marker1,0,1)] ** 2;
 				}
 
 			}
@@ -228,11 +234,11 @@ sub bin2dec {
 
 package main;
 
-my $id1 = "A2U2Kg1WQkJBqqqqqqqq";
+my $id1 = "A2U2Kg1WQkJBqqqqhqqq";
 my $id2 = "/AAAAAAAAABBvqurhquu";
 
-my $h = prob::allosome_prob($id2,$id2);
+my $h = prob::allosome_prob($id2,$id1);
 my ($p,$j) = prob::autosome_prob("A2U2Kg1WQkJB","A3U2KK3WR/qB");
 
-my $v = prob::mayRelated($id1,$id2);
-print "$v\n";
+my $v = prob::mayRelated($id2,$id2);
+print "$h\n";
