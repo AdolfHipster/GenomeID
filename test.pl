@@ -1,11 +1,11 @@
- #!/usr/bin/perl
+#!/usr/bin/perl
 use strict;
 use warnings;
 
 package genomeID;
 use MIME::Base64;
 use Bio::DB::Sam;
-
+use Data::Dumper;
 
 # define input variables
 my $VERSION = 1;
@@ -344,7 +344,7 @@ sub generate_id{
 		
 		# determine if hg version is supported
 		if(! exists $bit_loc_static{$input{'hg'}}){
-	 die "Version: $input{'hg'} is not supported\n";
+			die "Version: $input{'hg'} is not supported\n";
 		}
 		$ref_hg = $input{'hg'};
 		(%pengelly) = @{$pengelly_static{$input{'hg'}}}; 
@@ -394,19 +394,19 @@ sub generate_id{
 		
 		# determine hg version if not specified
 		if($guess_hg){
-	 my $chrLength = $file->length("$prefix"."1");
-
-	 if(! exists $chr1_lengths{$chrLength}){
-		 die "Could not determine human genome version, please specify\n";
-	 }
-
-	 $ref_hg = $chr1_lengths{ $chrLength };
-	 (%pengelly) = @{$pengelly_static{ $ref_hg }};
-	 (%bit_loc) = @{$bit_loc_static{ $ref_hg }};
-	 (%autoSomes) = @{$autoSomes_static{ $ref_hg }};
-	 (%allosomes) = @{$allosomes_static{ $ref_hg }};
-	 (%ref_allel) = @{$ref_allel_static{ $ref_hg }};
-	 $guess_hg =0;
+			my $chrLength = $file->length("$prefix"."1");
+			
+			if(! exists $chr1_lengths{$chrLength}){
+				die "Could not determine human genome version, please specify\n";
+			}
+		
+			$ref_hg = $chr1_lengths{ $chrLength };
+			(%pengelly) = @{$pengelly_static{ $ref_hg }};
+			(%bit_loc) = @{$bit_loc_static{ $ref_hg }};
+			(%autoSomes) = @{$autoSomes_static{ $ref_hg }};
+			(%allosomes) = @{$allosomes_static{ $ref_hg }};
+			(%ref_allel) = @{$ref_allel_static{ $ref_hg }};
+			$guess_hg =0;
 		}
 
 		bam();
@@ -448,7 +448,7 @@ sub tbi{
 	$prefix = "chr";
 
 	# loop through autoSomal markers
-	foreach my $key(keys %autoSomes){
+	foreach my $key(keys %autoSomes){last;
 		# grab marker location to query vcf file 
 		my ($chr, $pos) = split(":",$key);
 		my $isPengelly = $pengelly{$key};
@@ -485,13 +485,13 @@ sub tbi{
 		}
 
 		if($data ne "" && $guess_hg){
-	 my $continue = guessHG('key'=>$key,'ref'=>$col[3],'bam'=>0);
+			my $continue = guessHG('key'=>$key,'ref'=>$col[3],'bam'=>0);
 	 
-	 # determine if a change was detected
-	 if(!$continue){
-		 tbi();
-		 return;
-	 }
+	 		# determine if a change was detected
+			if(!$continue){
+				tbi();
+				return;
+			}
 		}
 
 		# no read was found
@@ -534,11 +534,12 @@ sub tbi{
 			$data = `tabix $file -b 2 -e 2 $prefix$chr:$pos-$pos`;
 		}
 		my @rows = split(/\n/,$data);
-
+		
 		# determine if there was results,
 		# if not, assign to reference if flag
 		# was specified
 		if($data eq ""){
+			next unless $chr eq 'Y';
 			if($ref){
 				my $ref_al = $ref_allel{$key};
 
@@ -628,20 +629,23 @@ sub bam{
 
 			# determine zygosity
 			my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$SMB[0]);
-		
+
 			# modify both bits
 			if($chr eq 'X'){
 				my ($bit1,$bit2) = split(":",$zyg);
-				$XMB[$bit] = $bit1;
+				if(!$SMB[0]){
+					$XMB[$bit] = $bit1;
+				}
 				$XMB[$bit+1] = $bit2;
 			}
 			
 			# Y chromosome modify left bit
 			else{
-
+				#print "$zyg\n";		
 			}
 
 		}
+		print "@XMB\n";
 	}
 }
 
@@ -978,7 +982,7 @@ sub bam_zygosity{
 		
 		$reads++; #increment reads, accounts for noise
 	}
-
+	
 	# determine the 2 most populated alleles
 	# and compare to see if homo or hetero
 	my $al_1 = (sort {$alleles{$a} <=> $alleles{$b}} keys %alleles)[(keys %alleles)-1];
@@ -999,9 +1003,13 @@ sub bam_zygosity{
 		
 	# handle if this is sex chromosome bits
 	if(exists $input{'smb'} ){
-		# if chr is Y chromosome
 		if($input{'chr'} eq 'Y'){
-
+			if($al_1 eq $input{'anc'} && $al1 > 0.9*($al1 + $al2) ){
+				print "$input{'loc'}\n";
+				print Dumper(\%alleles);
+				return 1;
+			}
+			return 0;
 		}
 	 
 		# determine if homozygous
@@ -1040,11 +1048,11 @@ sub bam_zygosity{
 
 package main;
 
-#my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
+my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
 #   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
 
-#my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'hg'=>'hg19','sex'=>1,'ref'=>1);
-#print "$genID\n";
+my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'hg'=>'hg19','sex'=>1,'ref'=>0);
+print "$genID\n";
 
 
 
