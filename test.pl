@@ -12,6 +12,7 @@ my $VERSION = 1;
 my $file; my $type; my $noise; my $sex;
 my $prefix; my $ucn; my $ref; my $baq;
 my $guess_hg; my $ref_hg;
+my $Y_marker_id;
 
 # define static constants
 my %bit_loc_static; my %pengelly_static; my %autoSomes_static;
@@ -423,7 +424,17 @@ sub generate_id{
 
 	# generate version block
 	$GVB = 0 x (6-length(sprintf("%b",$VERSION))) . sprintf("%b",$VERSION);
+	
+	# generate the Y marker bits if sex, and Y is present
+	if($SMB[0] && $sex){
+		$Y_marker_id = 0 x (10-length(sprintf("%b",$Y_marker_id) ) ) . sprintf("%b",$Y_marker_id);
 		
+		# change bits of the XMB
+		for( my $i = 0; $i < 20; $i+=2){
+			$XMB[$i] = substr($Y_marker_id,$i/2,1);
+		}
+	}
+
 	# generate SIB
 	# if ucn or non informative
 	# sex marker bit, then this is 1
@@ -620,19 +631,21 @@ sub bam{
 	
 	# generate additional sex markers
 	if($sex){
+			my $max_depth = 0;
 			# loop through allosomes
 			foreach my $key (keys %allosomes){
 			# grab marker information used to query bam file
 			my ($chr,$pos) = split(":",$key);
 			my ($anc,$alt) = split(":",$allosomes{$key});
-			my $bit = $bit_loc{$key} -1;
 
 			# determine zygosity
 			my $zyg = bam_zygosity('chr'=>"$prefix$chr",'loc'=>$pos,'anc'=>$anc,'alt'=>$alt,'smb'=>$SMB[0]);
 
 			# modify both bits
 			if($chr eq 'X'){
+				my $bit = $bit_loc{$key} -1;
 				my ($bit1,$bit2) = split(":",$zyg);
+
 				if(!$SMB[0]){
 					$XMB[$bit] = $bit1;
 				}
@@ -641,11 +654,14 @@ sub bam{
 			
 			# Y chromosome modify left bit
 			else{
-				#print "$zyg\n";		
+				my ($bit,$depth,$mark_id) = split(":",$bit_loc{$key}); 
+				next unless $depth > $max_depth;
+
+				$max_depth = $depth;
+				$Y_marker_id = $bit;
 			}
 
 		}
-		print "@XMB\n";
 	}
 }
 
@@ -890,6 +906,7 @@ sub genMADIB{
 	}
 }
 
+my $max_depth = 0;
 sub xmb_builder{
 	my (%input) = @_;
 
@@ -901,18 +918,24 @@ sub xmb_builder{
 	my $row = $input{'data'};
 	my @col = split(/\t/,$row);
 	my $mis = 0;
-	my $isY = 0;
 
 	# get information that directly is involved
 	# with the value/location of the bit
 	my ($anc,$alt) = split(":", $allosomes{$key});
-	my $bit = $bit_loc{$key} - 1;
 
 	# determine if it is a Y chromosome
 	if($chr eq 'Y'){
-		$isY = 1;
+		my($bit,$depth,$marker_id) = split(":", $allosomes{$key});
+		next unless $depth > $max_depth;
+		$max_depth = $depth;
+		
+		$Y_marker_id = $bit;	
 		$SMB[0] = 1;
+
+		next;
 	}
+
+	my $bit = $bit_loc{$key} -1;
 
 	# determine if multiple alternates were listed
 	if(! $col[4] =~ /^\s*\w{1}\s*/){
@@ -929,31 +952,18 @@ sub xmb_builder{
 
 	# homozygous to ancestral allele
 	if($col[9] =~ $homo2 && $col[3] eq $anc){
-		if($isY){
-
-		}
-		else{ $XMB[$bit] = 0;}
+		$XMB[$bit] = 0;
 	}
 
 	# homozygous to alternate allele
 	elsif($col[9] =~ $homo1 && $col[4] eq $alt){
-		if($isY){
-
-		}
-		else{ $XMB[$bit+1] = 1;}
+		$XMB[$bit+1] = 1;
 	}
 
 	# heterozygous
 	elsif(!$mis && $col[3] eq $anc && $col[4] eq $alt){
-		if($isY){
-
-		}
-		elsif($SMB[0]){
-			$XMB[$bit+1] = 1;
-		}
-		else{
-			$XMB[$bit +1] = 1; $XMB[$bit] = 0;
-		}
+		$XMB[$bit+1] = 1;
+		$XMB[$bit +1] = 1; $XMB[$bit] = 0;
 	}
 }
 
@@ -1005,8 +1015,6 @@ sub bam_zygosity{
 	if(exists $input{'smb'} ){
 		if($input{'chr'} eq 'Y'){
 			if($al_1 eq $input{'anc'} && $al1 > 0.9*($al1 + $al2) ){
-				print "$input{'loc'}\n";
-				print Dumper(\%alleles);
 				return 1;
 			}
 			return 0;
