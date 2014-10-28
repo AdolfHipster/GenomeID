@@ -5,19 +5,17 @@ use strict;
 use warnings;
 require Exporter;
 require Bio::DB::Sam;
+require MIME::Base64;
+require List::MoreUtils 'first_index';
 
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
-$VERSION = 1.00;
+$VERSION = 1;
 @ISA = qw(Exporter);
 @EXPORT = ();
 @EXPORT_OK = qw(generate_id);
 %EXPORT_TAGS ( DEFAULT => [qw(&generate_id)] );
 
-sub generate_id {
-	# hash 
-
-}
 
 
 
