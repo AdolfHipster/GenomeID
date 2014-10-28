@@ -5,14 +5,19 @@ use warnings;
 package genomeID;
 use MIME::Base64;
 use Bio::DB::Sam;
+use List::MoreUtils 'first_index';
 use Data::Dumper;
 
 # define input variables
 my $VERSION = 1;
 my $file; my $type; my $noise; my $sex;
 my $prefix; my $ucn; my $ref; my $baq;
-my $guess_hg; my $ref_hg;
+my $guess_hg; my $ref_hg; my $sampleName;
+my $readCol = 1;
+
 my $Y_marker_id;
+my $max_depth;
+my $Y_marker_name;
 
 # define static constants
 my %bit_loc_static; my %pengelly_static; my %autoSomes_static;
@@ -327,6 +332,10 @@ sub regen{
 
 $prefix = "";
 $guess_hg  =0;
+$max_depth = 0;
+$Y_marker_id = 0;
+$Y_marker_name = "";
+$readCol = 9;
 
 # define bit holders
 $MADIB = ""; @AMB = ("0") x 58; @SMB = ("0") x 2;
@@ -371,9 +380,17 @@ sub generate_id{
 	# store input flags
 	$baq = (exists $input{'baq'})? $input{'baq'} : 30; 
 	$noise = (exists $input{'noise'})? $input{'noise'} : 0.05;
-	$sex = $input{'sex'}; $file = $input{'file'}; 
+	$sex = $input{'sex'}; 
+	$file = $input{'file'}; 
 	$ucn = (exists $input{'ucn'})? $input{'ucn'} : 0;
 	$ref = (exists $input{'ref'})? $input{'ref'} : 0;
+	$sampleName = (exists $input{'sampleName'})? $input{'sampleName'} : "";
+
+	# determine if a sampleName was specified
+	if( exists $input{'sampleName'} && $input{'type'} ne 'bam'){
+		detReadCol($input{'type'});
+		return $sampleName;
+	}
 
 	# for the XMB, we assume everything is
 	# undefined, later we will fix this 
@@ -427,11 +444,17 @@ sub generate_id{
 	
 	# generate the Y marker bits if sex, and Y is present
 	if($SMB[0] && $sex){
-		$Y_marker_id = 0 x (10-length(sprintf("%b",$Y_marker_id) ) ) . sprintf("%b",$Y_marker_id);
+		$Y_marker_id = 0 x (9-length(sprintf("%b",$Y_marker_id) ) ) . sprintf("%b",$Y_marker_id);
 		
 		# change bits of the XMB
-		for( my $i = 0; $i < 20; $i+=2){
+		for( my $i = 0; $i < 18; $i+=2){
 			$XMB[$i] = substr($Y_marker_id,$i/2,1);
+		}
+		if($Y_marker_name eq 1){
+			$XMB[18] = 1;
+		}
+		else{
+			$XMB[18] = 0;
 		}
 	}
 
@@ -459,7 +482,7 @@ sub tbi{
 	$prefix = "chr";
 
 	# loop through autoSomal markers
-	foreach my $key(keys %autoSomes){last;
+	foreach my $key(keys %autoSomes){
 		# grab marker location to query vcf file 
 		my ($chr, $pos) = split(":",$key);
 		my $isPengelly = $pengelly{$key};
@@ -488,11 +511,11 @@ sub tbi{
 				}
 			}
 		}
-
+		
 		# determine zygosity
 		if(! $data eq ""){
-			$zyg = ($col[9] =~ $homo1 or $col[9] =~ $homo2)? 0:1;
-			$mis = ($col[9] =~ $misR)? 1:0;
+			$zyg = ($col[$readCol] =~ $homo1 or $col[$readCol] =~ $homo2)? 0:1;
+			$mis = ($col[$readCol] =~ $misR)? 1:0;
 		}
 
 		if($data ne "" && $guess_hg){
@@ -537,7 +560,6 @@ sub tbi{
 		# grab marker location to query vcf file
 		my ($chr,$pos) = split(':', $key);
 		my ($anc,$alt) = split(":", $allosomes{$key});
-		my $bit = $bit_loc{$key} - 1;
 
 		# query tabix file
 		my $data = `tabix $file -b 2 -e 2 $chr:$pos-$pos`;
@@ -550,7 +572,9 @@ sub tbi{
 		# if not, assign to reference if flag
 		# was specified
 		if($data eq ""){
-			next unless $chr eq 'Y';
+			next if $chr eq 'Y';
+			
+			my $bit =  $bit_loc{$key} -1;
 			if($ref){
 				my $ref_al = $ref_allel{$key};
 
@@ -631,7 +655,6 @@ sub bam{
 	
 	# generate additional sex markers
 	if($sex){
-			my $max_depth = 0;
 			# loop through allosomes
 			foreach my $key (keys %allosomes){
 			# grab marker information used to query bam file
@@ -654,9 +677,25 @@ sub bam{
 			
 			# Y chromosome modify left bit
 			else{
-				my ($bit,$depth,$mark_id) = split(":",$bit_loc{$key}); 
-				next unless $depth > $max_depth;
+				next unless $zyg eq 1;
+				my ($bit,$depth,$mark_id) = split(":",$bit_loc{$key});
+				
+				# ensure not from a difference branch
+				if($Y_marker_name ne 1){
+					my ($tree, $branch) = split("-", $mark_id);
 
+					# check to see if tree is the same
+					if( index($Y_marker_name, $tree) != -1 || $Y_marker_name eq ""  ){
+						$Y_marker_name = $tree;
+					}
+					else{
+						$Y_marker_name = 1;
+					}
+				}
+
+				# we take the deepest branch 
+				next unless $depth > $max_depth;
+				
 				$max_depth = $depth;
 				$Y_marker_id = $bit;
 			}
@@ -690,21 +729,21 @@ sub vcf{
 
 		# if we need to guess, extra step
 		if($guess_hg){
-	 my $continue = guessHG('key'=>$key,'ref'=>$fields[3],'bam'=>0);
-
-	 # determine if change of reference was 
-	 # detected
-	 if(! $continue){
-		 vcf();
-		 return;
-	 }
+			my $continue = guessHG('key'=>$key,'ref'=>$fields[3],'bam'=>0);
+			
+			# determine if change of reference was 
+	 		# detected
+			if(! $continue){
+		 		vcf();
+				return;
+			}
 		}
 
 		# determine if this is marker
 		next unless exists $bit_loc{$key};
 
 		my $bit = $bit_loc{$key}-1;
-		my $mis = ($fields[9] =~ $misR)? 1:0;
+		my $mis = ($fields[$readCol] =~ $misR)? 1:0;
 			  
 		# determine if sex chromosome marker
 		if(exists $allosomes{$key} && $sex){
@@ -719,7 +758,7 @@ sub vcf{
 		# it must be an autosome
 		next unless exists $autoSomes{$key};
 
-		my $zyg = ($fields[9] =~ $homo1 or $fields[9] =~ $homo2)? 0:1;
+		my $zyg = ($fields[$readCol] =~ $homo1 or $fields[$readCol] =~ $homo2)? 0:1;
 
 		#fill in the correct amb bit
 		$AMB[$bit] = $zyg * (!$mis);
@@ -814,6 +853,14 @@ sub vcf{
 		@param anc        ancestral allele
 		@param alt        alternate allele
 		@return           returns the zygosity of the snp
+	
+	detReadCol
+		For vcf/tbi files, there are more than one samples that can
+		be contained. this will determine which coloumn is required 
+		to be read
+
+		@param 0				the type of file (tbi or vcf)
+		@return 				void
 =cut
 
 sub guessHG{
@@ -906,7 +953,6 @@ sub genMADIB{
 	}
 }
 
-my $max_depth = 0;
 sub xmb_builder{
 	my (%input) = @_;
 
@@ -925,7 +971,24 @@ sub xmb_builder{
 
 	# determine if it is a Y chromosome
 	if($chr eq 'Y'){
+		# check to ensure it was not a missed read
+		next if $col[$readCol] =~ $misR;
 		my($bit,$depth,$marker_id) = split(":", $allosomes{$key});
+
+		# ensure that all trees are the same
+		if($Y_marker_name ne 1){
+			my ($tree, $branch) = split("-",$marker_id);
+
+			# check to see if tree is the same
+			if( index($Y_marker_name, $tree) != -1 || $Y_marker_name eq ""){
+				$Y_marker_name = $tree;
+			}
+			else{
+				$Y_marker_name = 1;
+			}
+		}
+
+		# we only take the deepest branch
 		next unless $depth > $max_depth;
 		$max_depth = $depth;
 		
@@ -948,15 +1011,15 @@ sub xmb_builder{
 		else{ $col[4] = "P"; }
 	}
 
-	$mis = ($col[9] =~ $misR)? 1:0;
+	$mis = ($col[$readCol] =~ $misR)? 1:0;
 
 	# homozygous to ancestral allele
-	if($col[9] =~ $homo2 && $col[3] eq $anc){
+	if($col[$readCol] =~ $homo2 && $col[3] eq $anc){
 		$XMB[$bit] = 0;
 	}
 
 	# homozygous to alternate allele
-	elsif($col[9] =~ $homo1 && $col[4] eq $alt){
+	elsif($col[$readCol] =~ $homo1 && $col[4] eq $alt){
 		$XMB[$bit+1] = 1;
 	}
 
@@ -1053,17 +1116,39 @@ sub bam_zygosity{
 	return ( $al1  >= 0.90 * ($al1+$al2) )? 0:1; 
 }
 
+sub detReadCol{
+	my $type = $_[0];
+	my @header;
+
+	if($type eq "tbi"){
+		@header = split(/\t/, (split(/\n/,`tabix -H $file`))[-1]);
+	}
+	else{
+		my $header = "";
+		open my $vcf, '<', $file or die "$!\n";
+		while(<$vcf>){
+
+			# ensure that it is a header
+			last unless /^#/;
+			$header = $_;
+		}
+		@header = split(/\t/, $header);
+	}
+	$readCol = first_index{ /$sampleName/ } @header;
+	die "No Sample: $sampleName in specified file\n" unless $readCol > 0;
+}
+
 
 package main;
 
 my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
-#   $vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
+   $vcfFile = "/export/home/yusuf/geneomeID/genomeID/samples/ALL.chr1.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes.vcf.gz";
+	#$vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
+#	$vcfFile = "/export/home/yusuf/geneomeID/sample1.vcf";
 
-my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'hg'=>'hg19','sex'=>1,'ref'=>0);
+my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'hg'=>'hg19','sex'=>0,'ref'=>1);
+
 print "$genID\n";
-
-
-
 
 
 
