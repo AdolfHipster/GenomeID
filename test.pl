@@ -530,6 +530,10 @@ sub tbi{
 
 		# no read was found
 		if ($data eq "" || $mis){
+			if($ref && !$mis){
+				$AMB[$bit] = 0; next;
+			}
+
 			$AMB[$bit] = 0;
 			$missing_markers++;
 			$bit_mis = $bit;
@@ -780,7 +784,7 @@ sub vcf{
 	# if there was a flag to match
 	# sex information to the reference genome, then
 	# loop through and do so
-	if($ref){
+	if($ref && $sex){
 		foreach my $key (keys %ref_allel){
 			my $bit = $bit_loc{$key} - 1;
 			my ($anc,$alt) = split(":",$allosomes{$key});
@@ -803,7 +807,9 @@ sub vcf{
 	}
 
 	# deal with missing markers
-	$missing_markers += 58 - $found;
+	if(!$ref){
+		$missing_markers += 58 - $found;
+	}
 	$only_peng = ($only_peng && $found_peng == 24);
 	
 	genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng,'bMis'=>$bit_mis);   
@@ -1142,11 +1148,11 @@ sub detReadCol{
 package main;
 
 my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
-   $vcfFile = "/export/home/yusuf/geneomeID/genomeID/samples/ALL.chr1.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes.vcf.gz";
+#   $vcfFile = "/export/home/yusuf/geneomeID/genomeID/samples/ALL.chr1.phase3_shapeit2_mvncall_integrated_v5.20130502.genotypes.vcf.gz";
 	#$vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
 #	$vcfFile = "/export/home/yusuf/geneomeID/sample1.vcf";
 
-my $genID = genomeID::generate_id('type'=>'tbi','file'=>$vcfFile,'hg'=>'hg19','sex'=>0,'ref'=>1);
+my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'hg'=>'hg19','sex'=>1,'ref'=>1);
 
 print "$genID\n";
 
