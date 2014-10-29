@@ -448,16 +448,16 @@ sub generate_id{
 		
 		# change bits of the XMB
 		for( my $i = 0; $i < 18; $i+=2){
-			$XMB[$i] = substr($Y_marker_id,$i/2,1);
+			$XMB[ scalar(@XMB) - 18 +$i] = substr($Y_marker_id,$i/2,1);
 		}
 		if($Y_marker_name eq 1){
-			$XMB[18] = 1;
+			$XMB[0] = 1;
 		}
 		else{
-			$XMB[18] = 0;
+			$XMB[0] = 0;
 		}
 	}
-
+	
 	# generate SIB
 	# if ucn or non informative
 	# sex marker bit, then this is 1
