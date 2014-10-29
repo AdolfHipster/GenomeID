@@ -5,9 +5,9 @@ use strict;
 use warnings;
 
 require Exporter;
-require MIME::Base64;
-require Bio::DB::Sam;
-require List::MoreUtils 'first_index';
+use MIME::Base64;
+use Bio::DB::Sam;
+use List::MoreUtils 'first_index';
 
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw( generate_id);
