@@ -468,7 +468,8 @@ sub generate_id{
 	my $SMB = join("",@SMB);
 
 	my $genString = "$MADIB$AMB$SMB$GVB$XMB";
-	return encode_base64 pack 'B*', $genString;
+	($genString = encode_base64 pack 'B*', $genString) =~ s/\s+//g;;
+	return $genString;
 }
 
 =comment
