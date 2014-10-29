@@ -1,0 +1,6 @@
+Revision history for Perl extension Bio::Seq::GenomeID.
+
+0.01  Wed Oct 29 11:25:03 2014
+	- original version; created by h2xs 1.23 with options
+		-AX Bio::Seq::GenomeID
+

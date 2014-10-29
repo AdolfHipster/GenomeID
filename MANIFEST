@@ -1,0 +1,6 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Bio-Seq-GenomeID.t
+lib/Bio/Seq/GenomeID.pm
