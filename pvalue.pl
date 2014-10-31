@@ -181,9 +181,9 @@ sub mayRelated{
 	# determine if not same gender
 	if( substr($bin_ids[0],64,1) ne substr($bin_ids[1],64,1) ){
 		# loop over right handed bits, ensure same marker
-		for(my $i=73; $i<120;$i+=2){
+		for(my $i=120; $i>=72;$i-=2){
 			last unless $bitcount != 9;
-
+			
 			$bitcount++;
 			next if(substr($bin_ids[0],$i,1) eq substr($bin_ids[1],$i,1) );
 
@@ -240,8 +240,8 @@ package main;
 my $id1 = "A2U2Kg1WQkJBqqqqhqqq";
 my $id2 = "/AAAAAAAAABBvqurhquu";
 
-my $h = prob::allosome_prob($id2,$id1);
+#my $h = prob::allosome_prob($id2,$id1);
 #my ($p,$j) = prob::autosome_prob($id1,$id2);
 
-#my $v = prob::mayRelated($id2,$id2);
+my $v = prob::mayRelated($id2,$id2);
 #print "$h\n";
