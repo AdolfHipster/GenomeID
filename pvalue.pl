@@ -105,31 +105,34 @@ sub allosome_prob{
 				my $marker1 = substr($bin_ids[0],$i,2);
 				my $marker2 = substr($bin_ids[1],$i,2);
 
-				# first 9 bits are for Y chr
+				# last 9 bits are for Y chr
+				# first
 				# thus compare lower bit
-				if($bitCount >= 9){
+				if($bitCount >= 16 || $bitCount == 1){
 					$marker1 = substr($bin_ids[0],$i+1,1);
 					$marker2 = substr($bin_ids[1],$i+1,1);
 				}
+				$bitCount++;
 
 				# ensure markers are the same and defined
 				next unless $marker1 eq $marker2;
 				next unless $marker1 ne "10";
 
 				# get frequencies
-				my $bit = ($bitCount >= 9)? $i+1 : $i;
-				my @freq = ${allosome_freq{$bit}};
+				my $bit = $i+1;
+				my @freq = @{${allosome_freq{$bit}}};
 				
-				my $power = ($bitCount >= 9)? 2 : 1;
+				# if we are looking at 2 bits, then raise to power of 2
+				# otherwise, raise to power of one
+				my $power = ($bitCount-1 >= 16 || $bitCount-1 == 1) ? 1 : 2;
+
 				# multiply probabilities
 				if($marker1 eq "01"){
-					$prob *= 2 * ($freq[0][0] * $freq[0][1] ) **2;
+					$prob *= 2 * ($freq[0] * $freq[1] ) **2;
 				}
 				else{
-					$prob *= $freq[0][substr($marker1,0,1)] ** $power;
+					$prob *= $freq[substr($marker1,0,1)] ** $power;
 				}
-
-				$bitCount++;
 			}
 		}
 
@@ -238,7 +241,7 @@ my $id1 = "A2U2Kg1WQkJBqqqqhqqq";
 my $id2 = "/AAAAAAAAABBvqurhquu";
 
 my $h = prob::allosome_prob($id2,$id1);
-my ($p,$j) = prob::autosome_prob("A2U2Kg1WQkJB","A3U2KK3WR/qB");
+#my ($p,$j) = prob::autosome_prob($id1,$id2);
 
-my $v = prob::mayRelated($id2,$id2);
-print "$h\n";
+#my $v = prob::mayRelated($id2,$id2);
+#print "$h\n";
