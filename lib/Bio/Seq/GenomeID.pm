@@ -1146,7 +1146,9 @@ sub detReadCol{
 		@header = split(/\t/, $header);
 	}
 	$readCol = first_index{ /$sampleName/ } @header;
-	die "No Sample: $sampleName in specified file\n" unless $readCol > 0;
+	if($readCol < 2){
+		$readCol = 9;
+	}
 }
 
 1;

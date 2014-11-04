@@ -1153,7 +1153,7 @@ my $vcfFile = "/export/home/yusuf/geneomeID/sample1.bam";
 	#$vcfFile = "/export/home/yusuf/geneomeID/HG00157.1000g.vcf.gz";
 #	$vcfFile = "/export/home/yusuf/geneomeID/sample1.vcf";
 
-my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'hg'=>'hg19','sex'=>1,'ref'=>1);
+my $genID = genomeID::generate_id('type'=>'bam','file'=>$vcfFile,'hg'=>'hg19','sex'=>1,'ref'=>1, 'sampleName'=>"rofl");
 
 print "$genID\n";
 
