@@ -65,10 +65,9 @@ sub autosome_prob{
 	my $k = cAutosome_match(\@bits,$skip,$more_missing);
 	my $n = scalar @bits - $skip;
 
-# FIX THIS
 	# modify if odd or even missing
 	if($skip % 2){
-
+		#FIX THIS
 	}
 	# what if only one bit was missed?
 	elsif (scalar @bits == 58){
@@ -241,4 +240,4 @@ my $h = prob::allosome_prob($id2,$id1);
 my ($p,$j) = prob::autosome_prob("A2U2Kg1WQkJB","A3U2KK3WR/qB");
 
 my $v = prob::mayRelated($id2,$id2);
-print "$h\n";
+print "$v\n";
