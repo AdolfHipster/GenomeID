@@ -983,7 +983,7 @@ sub xmb_builder{
 	# determine if it is a Y chromosome
 	if($chr eq 'Y'){
 		# check to ensure it was not a missed read
-		next if $col[$readCol] =~ $misR;
+		return if $col[$readCol] =~ $misR;
 		my($bit,$depth,$marker_id) = split(":", $allosomes{$key});
 
 		# ensure that all trees are the same
@@ -1000,13 +1000,13 @@ sub xmb_builder{
 		}
 
 		# we only take the deepest branch
-		next unless $depth > $max_depth;
+		return unless $depth > $max_depth;
 		$max_depth = $depth;
 		
 		$Y_marker_id = $bit;	
 		$SMB[0] = 1;
 
-		next;
+		return;
 	}
 
 	my $bit = $bit_loc{$key} -1;
@@ -1020,6 +1020,22 @@ sub xmb_builder{
 			$col[4] = $alt;
 		}
 		else{ $col[4] = "P"; }
+	}
+
+	# sometimes males will have 1 char 
+	# instead of 3 (eg: 1|1 )
+	if( length $col[$readCol] == 1 ){
+		# Y chr is present
+		$SMB[0] = 1;
+
+		if( $col[$readCol] && $col[3] eq $anc ){
+			$XMB[$bit] = 0;
+		}
+		else if( !$col[$readCol] && $col[4] eq $alt ){
+			$XMB[$bit+1] = 1;
+		}
+
+		return;
 	}
 
 	$mis = ($col[$readCol] =~ $misR)? 1:0;
