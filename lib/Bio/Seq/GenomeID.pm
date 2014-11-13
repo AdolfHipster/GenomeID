@@ -393,7 +393,6 @@ sub generate_id{
 	# determine if a sampleName was specified
 	if( exists $input{'sampleName'} && $input{'type'} ne 'bam'){
 		detReadCol($input{'type'});
-		return $sampleName;
 	}
 
 	# for the XMB, we assume everything is
@@ -1031,7 +1030,7 @@ sub xmb_builder{
 		if( $col[$readCol] && $col[3] eq $anc ){
 			$XMB[$bit] = 0;
 		}
-		else if( !$col[$readCol] && $col[4] eq $alt ){
+		elsif( !$col[$readCol] && $col[4] eq $alt ){
 			$XMB[$bit+1] = 1;
 		}
 
