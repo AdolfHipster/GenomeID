@@ -453,11 +453,11 @@ sub generate_id{
 	
 	# generate the Y marker bits if sex, and Y is present
 	if($SMB[0] && $sex){
-		$Y_marker_id = 0 x (9-length(sprintf("%b",$Y_marker_id) ) ) . sprintf("%b",$Y_marker_id);
+		$Y_marker_id = 0 x (24-length(sprintf("%b",$Y_marker_id) ) ) . sprintf("%b",$Y_marker_id);
 		
 		# change bits of the XMB
-		for( my $i = 0; $i < 18; $i+=2){
-			$XMB[ scalar(@XMB) - 18 +$i] = substr($Y_marker_id,$i/2,1);
+		for( my $i = 0; $i < scalar(@XMB); $i+=2){
+			$XMB[$i] = substr($Y_marker_id,$i/2,1);
 		}
 		if($Y_marker_name eq 1){
 			$XMB[0] = 1;
@@ -477,6 +477,7 @@ sub generate_id{
 	my $SMB = join("",@SMB);
 
 	my $genString = "$MADIB$AMB$SMB$GVB$XMB";
+	
 	($genString = encode_base64 pack 'B*', $genString) =~ s/\s+//g;;
 	return $genString;
 }
