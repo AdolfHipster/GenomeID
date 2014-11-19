@@ -10,6 +10,7 @@ use Bio::DB::Sam;
 use List::MoreUtils 'first_index';
 use Switch;
 use Math::CDF qw(:all);
+use Data::Dumper;
 
 our @ISA = qw(Exporter);
 our @EXPORT = ();
@@ -23,7 +24,7 @@ our @EXPORT_OK = qw(
 my $file; my $type; my $noise; my $sex;
 my $prefix; my $ucn; my $ref; my $baq;
 my $guess_hg; my $ref_hg; my $sampleName;
-my $readCol = 1;
+my $readCol = 1; my $maq;
 
 my $Y_marker_id;
 my $max_depth;
@@ -389,6 +390,7 @@ sub generate_id{
 
 	# store input flags
 	$baq = (exists $input{'baq'})? $input{'baq'} : 30; 
+	$maq = (exists $input{'maq'})? $input{'maq'} : 20; 
 	$noise = (exists $input{'noise'})? $input{'noise'} : 0.05;
 	$sex = $input{'sex'}; 
 	$file = $input{'file'}; 
@@ -477,7 +479,6 @@ sub generate_id{
 	my $SMB = join("",@SMB);
 
 	my $genString = "$MADIB$AMB$SMB$GVB$XMB";
-	
 	($genString = encode_base64 pack 'B*', $genString) =~ s/\s+//g;;
 	return $genString;
 }
@@ -633,7 +634,7 @@ sub bam{
 	my $missing_markers = 0; my $only_peng = 1; my $bit_mis =0;
 
 	# loop through autoSomal markers
-	foreach my $key (keys %autoSomes){  
+	foreach my $key (keys %autoSomes){
 		# grab marker location to query bam file
 		my ($chr,$pos) = split(":",$key);
 		my ($fir,$las) = split(":",$autoSomes{$key});
@@ -665,8 +666,6 @@ sub bam{
 		} 
 	}
 	genMADIB('miss_count'=>$missing_markers,'oPeng'=>$only_peng,'bMis'=>$bit_mis);
-
-	$SMB[0] = (grep $_ eq  "$prefix"."Y", $file->seq_ids);
 	
 	# generate additional sex markers
 	if($sex){
@@ -684,17 +683,17 @@ sub bam{
 				my $bit = $bit_loc{$key} -1;
 				my ($bit1,$bit2) = split(":",$zyg);
 
-				if(!$SMB[0]){
-					$XMB[$bit] = $bit1;
-				}
+				$XMB[$bit] = $bit1;
 				$XMB[$bit+1] = $bit2;
 			}
-			
-			# Y chromosome modify left bit
+
+			# Y chr, take tree
 			else{
 				next unless $zyg eq 1;
+
 				my ($bit,$depth,$mark_id) = split(":",$bit_loc{$key});
-				
+				$SMB[0] = 1;
+
 				# ensure not from a difference branch
 				if($Y_marker_name ne 1){
 					my ($tree, $branch) = split("-", $mark_id);
@@ -713,8 +712,8 @@ sub bam{
 				
 				$max_depth = $depth;
 				$Y_marker_id = $bit;
-			}
 
+			}
 		}
 	}
 }
@@ -1081,6 +1080,7 @@ sub bam_zygosity{
 		# filter if score is not good enough
 		my $score = ($f->qscore)[$start];
 		next unless $score >= $baq;
+		next unless ($f->qual) >= $maq;
 		
 		# increment the allele counters
 		my $bp = substr($f->query->dna,$start,1);
@@ -1115,7 +1115,7 @@ sub bam_zygosity{
 			}
 			return 0;
 		}
-	 
+	 	
 		# determine if homozygous
 		if($al1 >= 0.90 * ($al1 + $al2)){
 			# if homo, determine for which allele
