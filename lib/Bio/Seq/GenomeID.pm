@@ -1261,77 +1261,122 @@ sub allosome_prob{
 	check_version();
 
 	my $prob = 1;
-	
-	# determine if Y chromosome present
-	if( substr($bin_ids[0],64,1) || substr($bin_ids[0],64,1) ){
-		my $bitCount = 1;
-			
-		# loop over XMB
-		for(my $i=72;$i<119;$i += 2){
-			my $marker1 = substr($bin_ids[0],$i,2);
-			my $marker2 = substr($bin_ids[1],$i,2);
+	my $male_present = substr($bin_ids[0],65,1) || substr($bin_ids[1],65,1);
 
-			# last 9 bits are for Y chr
-			# first
-			# thus compare lower bit
-			if($bitCount >= 16 || $bitCount == 1){
-				$marker1 = substr($bin_ids[0],$i+1,1);
-				$marker2 = substr($bin_ids[1],$i+1,1);
-			}
-			$bitCount++;
+	# loop over XMB
+	for( my $i=72; $i<119; $i+=2 ){
+		# if Male is present, only the higher bits
+		my $marker1 = ($male_present)? substr($bin_ids[0],$i+1,1) : substr($bin_ids[0],$i,2);
+		my $marker2 = ($male_present)? substr($bin_ids[1],$i+1,1) : substr($bin_ids[1],$i,2);
 
-			# ensure markers are the same and defined
-			next unless $marker1 eq $marker2;
-			next unless $marker1 ne "10";
+		# ensure markers are the same and defined
+		next unless $marker1 eq $marker2;
+		next unless $marker1 ne "10";
 
-			# get frequencies
-			my $bit = $i+1;
-			my @freq = @{${allosome_freq{$bit}}};
-				
-			# if we are looking at 2 bits, then raise to power of 2
-			# otherwise, raise to power of one
-			my $power = ($bitCount-1 >= 16 || $bitCount-1 == 1) ? 1 : 2;
-
-			# multiply probabilities
-			if($marker1 eq "01"){
-				$prob *= 2 * ($freq[0] * $freq[1] ) **2;
-			}
-			else{
-				$prob *= $freq[substr($marker1,0,1)] ** $power;
-			}
+		my $bit = $i+1;
+		my @freq = @{${allosome_freq{$bit}}};
+		my $power = ($male_present)? 1 : 2;
+		
+		if($marker1 eq "01"){
+			$prob *= 2 * ( $freq[0] * $freq[1] ) **2;
 		}
-	}
-
-	# no Y chromosome present
-	else{
-		# loop over XMB
-		for(my $i=72;$i<119;$i +=2){
-			my $marker1 = substr($bin_ids[0],$i,2);
-			my $marker2 = substr($bin_ids[1],$i,2);
-				
-			# ensure markers are same and defined
-			next unless $marker1 eq $marker2;
-			next unless $marker1 ne "10";
-				
-			# get frequencies
-			my @freq = ${allosome_freq{$i+1} };
-
-			# multiple probability over
-			if($marker1 eq "01"){
-				$prob *= 2 * ( $freq[0][0] * $freq[0][1] ) **2;
-			}
-			else{
-				$prob *= $freq[0][substr($marker1,0,1)] ** 2;
-			}
-
+		else{
+			my $j =substr($marker1,0,1);
+			$prob *= $freq[$j] ** $power;
 		}
 	}
 
 	return $prob;
 }
 
-sub mayRelated{
+# run through mandelian checks
+sub mandelian{
+	my $male1 = $_[0];
+	my $male2 = $_[1];
+	my $mark1 = $_[2];
+	my $mark2 = $_[3];
 
+	#if both males, Y chr bits must equal
+	if( $male1 && $male2 ){
+		return 1;
+		#return $mark1 eq $mark2;
+	}
+	
+	#if male + female
+		# where female is homo or het, male must be homo to that allele
+		# or contain one of the alleles
+	if($male1){
+		return (index($mark2,$mark1) != -1);
+	}
+	elsif($male2){
+		return (index($mark1,$mark2) != -1);
+	}
+
+	# female + female
+	else{
+
+	}
+
+	return 1;
+}
+
+sub mayRelated{
+	if(length $_[0] != 20 || length $_[1] != 20){
+		die "Id for allosome probability must be 20 characters\n";
+	}
+
+	@bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
+	check_version();
+	
+	my $prob = 1;
+	my $male1 = substr($bin_ids[0],64,1);
+	my $male2 = substr($bin_ids[1],64,1);
+
+	# loop over XMB
+	for( my $i=72; $i<119; $i+=2 ){
+		my $marker1 = ($male1)? substr($bin_ids[0],$i+1,1) : substr($bin_ids[0],$i,2);
+		my $marker2 = ($male2)? substr($bin_ids[1],$i+1,1) : substr($bin_ids[1],$i,2);
+
+		# ensure markers are not undefined
+		next if ($marker1 eq "10" && !$male1);
+		next if ($marker2 eq "10" && !$male2);
+		return 1 if(!mandelian($male1,$male2,$marker1,$marker2));
+
+		my ($q,$p) = @{${allosome_freq{$i+1}}};
+		my $pr = 1;
+
+		# father -> daughter
+		if( $male1  && !$male2 ){
+			if($marker1 eq "0"){
+				$p = $q;$q = 1-$p;
+			}
+			else{
+				$q = 1-$p;
+			}
+			$pr /= $p*$q + $p**2;
+		}
+
+		# mother-> son
+		if( !$male1 && $male2 ){
+			if($marker2 eq "0"){
+				$p = $q;$q = 1-$p;
+				$pr *= ($marker1 eq "00")? $p : $q;
+			}
+			else{
+				$q = 1-$p;
+				$pr *= ($marker1 eq "11")? $q : $p;
+			}
+		}
+
+		# mother -> daughter
+		if( !$male1 && !$male2 ){
+
+		}
+
+		$prob *= $pr;
+	}
+
+	return $prob;	
 }
 
 # subroutine to loop through bits and compare matches
