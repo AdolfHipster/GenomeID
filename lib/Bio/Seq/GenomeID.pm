@@ -25,6 +25,7 @@ my $file; my $type; my $noise; my $sex;
 my $prefix; my $ucn; my $ref; my $baq;
 my $guess_hg; my $ref_hg; my $sampleName;
 my $readCol = 1; my $maq;
+my $minRead_depth;
 
 my $Y_marker_id;
 my $max_depth;
@@ -397,6 +398,7 @@ sub generate_id{
 	$ucn = (exists $input{'ucn'})? $input{'ucn'} : 0;
 	$ref = (exists $input{'ref'})? $input{'ref'} : 0;
 	$sampleName = (exists $input{'sampleName'})? $input{'sampleName'} : "";
+	$minRead_depth = (exists $input{'minDepth'})? $input{'minDepth'} : 10;
 
 	# determine if a sampleName was specified
 	if( exists $input{'sampleName'} && $input{'type'} ne 'bam'){
@@ -1033,10 +1035,13 @@ sub xmb_builder{
 		# Y chr is present
 		$SMB[0] = 1;
 
-		if( $col[$readCol] && $col[3] eq $anc ){
-			$XMB[$bit] = 0;
+		# homozygous to reference allele
+		if( $col[$readCol] eq "0"){
+			$XMB[$bit+1] = ($col[3] eq $anc)? 0 : 1;
 		}
-		elsif( !$col[$readCol] && $col[4] eq $alt ){
+		
+		# homozygous to alternate allele
+		elsif( $col[$readCol] eq "1" && $col[4] eq $alt ){
 			$XMB[$bit+1] = 1;
 		}
 
@@ -1045,20 +1050,22 @@ sub xmb_builder{
 
 	$mis = ($col[$readCol] =~ $misR)? 1:0;
 
-	# homozygous to ancestral allele
-	if($col[$readCol] =~ $homo2 && $col[3] eq $anc){
-		$XMB[$bit] = 0;
+	# homozygous to reference allele
+	if( $col[$readCol] =~ $homo2 ){
+		my $isAlt = ($col[3] eq $anc)? 0:1;
+		$XMB[$bit + $isAlt] =  ($isAlt)? 1:0;
 	}
 
 	# homozygous to alternate allele
-	elsif($col[$readCol] =~ $homo1 && $col[4] eq $alt){
-		$XMB[$bit+1] = 1;
+	elsif($col[$readCol] =~ $homo1){
+		my $isAlt = ($col[4] eq $alt)? 1:0;
+		$XMB[$bit + $isAlt] =  ($isAlt)? 1:0;
 	}
 
 	# heterozygous
-	elsif(!$mis && $col[3] eq $anc && $col[4] eq $alt){
+	elsif(!$mis){
+		$XMB[$bit] = 0;
 		$XMB[$bit+1] = 1;
-		$XMB[$bit +1] = 1; $XMB[$bit] = 0;
 	}
 }
 
@@ -1079,7 +1086,9 @@ sub bam_zygosity{
 		
 		# filter if score is not good enough
 		my $score = ($f->qscore)[$start];
-		next unless $score >= $baq;
+
+		next unless ( defined $score );
+		next unless $score >= $baq;	
 		next unless ($f->qual) >= $maq;
 		
 		# increment the allele counters
@@ -1103,10 +1112,10 @@ sub bam_zygosity{
 
 	# ensure that it was greater than noise
 	my $zyg_prob = $al1/($al1 + $al2) * 100;
-	if($zyg_prob**$reads < $noise){
+	if($zyg_prob**$reads < $noise || $reads < $minRead_depth){
 		return (exists $input{'smb'})? "1:0": 0;
 	}
-		
+
 	# handle if this is sex chromosome bits
 	if(exists $input{'smb'} ){
 		if($input{'chr'} eq 'Y'){
@@ -1299,13 +1308,13 @@ sub mandelian{
 
 	#if both males, Y chr bits must equal
 	if( $male1 && $male2 ){
-		return 1;
-		#return $mark1 eq $mark2;
+		return $mark1 eq $mark2;
 	}
 	
 	#if male + female
 		# where female is homo or het, male must be homo to that allele
 		# or contain one of the alleles
+		print "$mark1 $mark2\n";
 	if($male1){
 		return (index($mark2,$mark1) != -1);
 	}
@@ -1315,10 +1324,21 @@ sub mandelian{
 
 	# female + female
 	else{
+		# get bits of each marker
+		
+		# if daughter is homo 
+		# 	then mother should be same homo, or het
+		# if daughter is het
+		# 	mother should be het or homo
+		my $mark1_1 = substr($mark1, 0, 1);
+		my $mark1_2 = substr($mark1, 1, 1);
 
+		if( index($mark2, $mark1_1) !=-1 || index($mark2, $mark1_2) != -1 ){
+			return 1;
+		}
 	}
 
-	return 1;
+	return 0;
 }
 
 sub mayRelated{
@@ -1328,10 +1348,10 @@ sub mayRelated{
 
 	@bin_ids = (unpack('B*', decode_base64($_[0])) , unpack('B*', decode_base64($_[1])) );
 	check_version();
-	
 	my $prob = 1;
 	my $male1 = substr($bin_ids[0],64,1);
 	my $male2 = substr($bin_ids[1],64,1);
+	my $skips = 0;
 
 	# loop over XMB
 	for( my $i=72; $i<119; $i+=2 ){
@@ -1341,7 +1361,11 @@ sub mayRelated{
 		# ensure markers are not undefined
 		next if ($marker1 eq "10" && !$male1);
 		next if ($marker2 eq "10" && !$male2);
-		return 1 if(!mandelian($male1,$male2,$marker1,$marker2));
+
+		if(!mandelian($male1,$male2,$marker1,$marker2)){
+			$skips++;
+		}
+		return -1 if ($skips > 2);
 
 		my ($q,$p) = @{${allosome_freq{$i+1}}};
 		my $pr = 1;
@@ -1349,29 +1373,32 @@ sub mayRelated{
 		# father -> daughter
 		if( $male1  && !$male2 ){
 			if($marker1 eq "0"){
-				$p = $q;$q = 1-$p;
+				$p = $q;
 			}
-			else{
-				$q = 1-$p;
-			}
-			$pr /= $p*$q + $p**2;
+			$pr /= $p;
 		}
 
 		# mother-> son
 		if( !$male1 && $male2 ){
 			if($marker2 eq "0"){
-				$p = $q;$q = 1-$p;
-				$pr *= ($marker1 eq "00")? $p : $q;
+				$p = $q;
+				$pr *= ($marker1 eq "00")? $p : (1-$p);
 			}
 			else{
-				$q = 1-$p;
-				$pr *= ($marker1 eq "11")? $q : $p;
+				$pr *= ($marker1 eq "11")? (1-$p) : $p;
 			}
 		}
 
 		# mother -> daughter
 		if( !$male1 && !$male2 ){
-
+			if($marker2 eq "00" || $marker2 eq "11"){
+				$p = ($marker2 eq "00")? $p : $q;
+				$pr *= ($marker1 eq "00")? 1 : (1/$p -1 );
+			}
+			else{
+				$p = ($marker2 eq "00")? $p : $q;
+				$pr /= ($marker1 eq "11")? ($p +1 ) : (2-2*$p);
+			}
 		}
 
 		$prob *= $pr;
