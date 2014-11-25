@@ -1312,9 +1312,8 @@ sub mandelian{
 	}
 	
 	#if male + female
-		# where female is homo or het, male must be homo to that allele
-		# or contain one of the alleles
-		print "$mark1 $mark2\n";
+	#	where female is homo or het, male must be homo to that allele
+	#	or contain one of the alleles
 	if($male1){
 		return (index($mark2,$mark1) != -1);
 	}
@@ -1390,15 +1389,14 @@ sub mayRelated{
 		}
 
 		# mother -> daughter
+		# this becomes a binomial distribution
 		if( !$male1 && !$male2 ){
-			if($marker2 eq "00" || $marker2 eq "11"){
-				$p = ($marker2 eq "00")? $p : $q;
-				$pr *= ($marker1 eq "00")? 1 : (1/$p -1 );
-			}
-			else{
-				$p = ($marker2 eq "00")? $p : $q;
-				$pr /= ($marker1 eq "11")? ($p +1 ) : (2-2*$p);
-			}
+			my @bits = 73..120;
+			my $k = cAutosome_match(\@bits,0,0);
+			my $n =  scalar @bits;
+			$prob = 1 - pbinom($k, $n, $prob_success);
+			return 1/$prob;
+			last;
 		}
 
 		$prob *= $pr;
