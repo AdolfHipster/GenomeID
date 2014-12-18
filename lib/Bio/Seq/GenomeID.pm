@@ -419,8 +419,10 @@ sub generate_id{
 			 
 		# determine if prefix is required
 		my @chrs = $file->seq_ids;
-		if($chrs[0] =~ /^([a-z]+)\d+/){
+		foreach (@chrs){
+			next unless $_ =~ /^([a-z]+)\d+/;
 			$prefix = $1;
+			last;
 		}
 		
 		# determine hg version if not specified
