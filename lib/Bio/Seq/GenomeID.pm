@@ -420,7 +420,7 @@ sub generate_id{
 		# determine if prefix is required
 		my @chrs = $file->seq_ids;
 		foreach (@chrs){
-			next unless $_ =~ /^([a-z]+)\d+/;
+			next unless $_ =~ /^([chrCHR]+)\d+/;
 			$prefix = $1;
 			last;
 		}
